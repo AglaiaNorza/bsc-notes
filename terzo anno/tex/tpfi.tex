@@ -838,7 +838,7 @@ Nel mondo categoriale, il concetto di ``funtore'' descrive un passaggio tra due 
 \end{itemize}
 \end{gframe}
 
-La classe \code{Functor} richiede che sia definita una funzione \code{fmap} che rende commutativo il passaggio dai tipi base ai tipi ``inscatolati''
+La classe \code{Functor} richiede che sia definita una funzione \code{fmap}, che rende commutativo il passaggio dai tipi base ai tipi ``inscatolati''
 
 \begin{haskellbox}{}
 class Functor t where
@@ -881,5 +881,73 @@ Per esempio, si può definire una funzione \code{inc} che incrementa i valori al
 inc :: Functor t => t Int -> t Int
 inc = fmap (+1)
 \end{haskellbox}
+
+\subsection{Functor laws}
+Affinché un funtore sia definito correttamente, è necessario che rispetti le due functor laws:
+\begin{enumerate}
+    \item \code{fmap id = id}
+    \item \code{fmap (f . g) = fmap f . fmap g}
+\end{enumerate}
+
+Nota bene: queste leggi non possono essere verificate dal type-checker, ma sono responsabilità del programmatore Haskell !
+
+\begin{gframe}{Funtori come omomorfismi}
+    Possiamo notare, osservando le \textit{functor laws}, che un funtore è effettivamente un \textbf{omomorfismo tra categorie} (un omomorfismo ``classico'' preserva l'operazione di gruppo, mentre un funtore preserva la ``struttura'' di una categoria, ovvero gli oggetti - i tipi -, e i morfismi - le funzioni.)
+\end{gframe}
+
+\section{Applicativi}
+Un normale funtore permette di usare \code{fmap} con un solo argomento, ma è naturale voler generalizzare: si vuole considerare una forma astratta di applicazione, che generalizzi l'usuale applicazione di funzioni. Per esempio, si vuole poter propagare un fallimento nel caso di \code{Maybe}, o applicare una funzione $n$-aria a valori ``inscatolati'' senza dover istanziare $n$ funtori.
+
+Haskell definisce quindi la classe \code{Applicative}.
+
+\begin{haskellbox}{}
+class Functor t => Applicative t where
+    pure :: a -> t a
+    (<*>) :: t (a -> b) -> t a -> t b
+\end{haskellbox}
+
+Un applicativo estende un funtore, e richiede due operatori fondamentali:
+\begin{itemize}
+    \item \code{pure}: prende un valore ``normale'' e lo immerge nel contesto (lo ``impacchetta'')
+        \subitem per esempio, per \code{Maybe}, \code{pure x} è \code{Just x}
+    \item \code{<*>} (\textit{splat} o \textit{apply}): prende una funzione ``impacchettata'' in un contesto (\code{t (a -> b)}) e un valore anch'esso in un contesto (\code{t a}), ``scarta'' concettualmente entrambi i contesti, applica la funzione al valore (gestendo gli effetti del contesto), produce il risultato e lo ``incarta'' nel contesto (\code{t b})
+\end{itemize}
+
+\begin{gframe}{Esempio: Maybe}
+    Possiamo istanziare \code{Maybe} anche come applicativo:
+    \begin{haskellbox}{}
+instance Applicative Maybe where
+    pure = Just
+    Nothing <*> _ = Nothing -- se uno dei due è Nothing, entrambi sono Nothing
+    (Just g) <*> mx = fmap g mx
+    -- <*> prende una funzione e un valore in un contesto, quindi
+    -- per es. Just (+3) <*> Just 2 = Just 5
+    \end{haskellbox}
+\end{gframe}
+
+\subsection{Liste come applicativi}
+L'istanza del Prelude delle liste non si comporta come una \code{zipWith} nell'applicare le funzioni presenti in una lista, ma modella un non-determinismo. Una lista non viene vista come una sequenza, ma come un valore che può assumere più risultati posssibili contemporaneamente. Quindi, quando si applica una lista di funzioni ad una lista di valori, l'applicativo contiene tutte le combinazioni possibili (prodotto cartesiano).
+
+\begin{haskellbox}{}
+instance Applicative [] where
+    -- pure : a -> [a]
+    pure x = [x]
+
+    -- <*> : [a -> b] -> [a] -> [b]
+    gs <*> xs = [g x | g <- gs, x <- xs]
+    -- ^ prodotto cartesiano 
+\end{haskellbox}
+
+Se eseguiamo quindi \code{pure (*) <*> [1,2] <*> [3,4]}:
+\begin{itemize}
+    \item \code{pure (*)} crea \code{[(*)]}
+    \item \code{[(*)] <*> [1,2]} produce una lista di funzioni \code{[(1*), (2*)]}
+    \item \code{[(1*), (2*)] <*> [3,4]} applica entrambe le funzioni ad entrambi i numeri
+        \subitem si ottiene quindi \code{1*3, 1*4, 2*3, 2*4} $\to$ \code{[3, 4, 5, 6]}
+\end{itemize}
+
+A volte si vuole però che le liste si comportino come \code{zipWith} - per questo, haskell introduce \code{ZipList}
+
+
 
 \end{document}
