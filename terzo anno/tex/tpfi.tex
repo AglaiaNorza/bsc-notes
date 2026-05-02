@@ -124,6 +124,8 @@
 \setbeforespace{2.5em}
 \setafterspace{2.5em}
 
+\newcommand{\apprord}{\sqsubseteq}
+
 \begin{document}
 
 \makecustomcover
@@ -406,7 +408,7 @@ Rimuovendo $x$, otteniamo $omega' = I(omega')$, dove $I$ è l'identità.
 Qualsiasi funzione $f$ soddisfa $f = I(f)$. Quale scegliere?
 
 \begin{itemize}
-    \item Haskell sceglie la funzione che "fa il minimo indispensabile" per soddisfare l'equazione. Si usa l'ordinamento $\sqsubseteq$ dove $f \sqsubseteq g$ significa che $g$ è "più definita" di $f$.
+    \item Haskell sceglie la funzione che "fa il minimo indispensabile" per soddisfare l'equazione. Si usa l'ordinamento $\apprord$ dove $f \apprord g$ significa che $g$ è "più definita" di $f$.
     \item \textbf{Costruzione di Kleene (least-fixpoint):} 
 
         il computer "costruisce" la funzione partendo dal nulla ($\bot$):
@@ -799,9 +801,283 @@ Ricordando la definizione di \code{foldr} basata sulla decomposizione della list
 \end{itemize}
 \end{proofframe}
 
-\section{TODO: tutto il resto}
+\section{TODO: call-by-name + laziness (08)}
+\section{TODO: funzioni strette e non strette}
+\section{TODO: tecniche di ottimizzazione (09)}
+\section{TODO: scanl e scanr (09bis)}
+\section{Strutture dati infinite}
+La valutazione lazy permette di maneggiare in modo astratto ed elegante \textbf{strutture dati infinite}.
 
-\section{Funtori e applicativi}
+Gli abitanti di un tipo ricorsivo in Haskell sono la \textbf{massima algebra chiusa} rispetto all'applicazione dei costruttori.
+
+\begin{defframe}{Massima vs minima algebra chiusa}{}
+\begin{itemize}
+    \item \textit{Minima algebra chiusa} (induzione): insieme di tutti i dati finiti che si possono costruire partendo dai casi base (esempio: numeri naturali di Peano)
+    \item \textit{Massima algebra chiusa} (co-induzione): include anche gli oggetti costruiti applicando i costruttori infinite volte - i tipi di Haskell ammettono questa natura infinita
+        \subitem per esempio, la co-algebra dei naturali includerebbe anche il `naturale infinito' 
+        $$\omega = S(S(\dots))=S^{\infty}(\dots)$$
+\end{itemize}
+\end{defframe}
+
+Nel caso delle liste, le liste \textit{finite} sono la minima algebra chiusa rispetto a \code{:} e \code{[]}, mentre le liste infinite (o \textbf{stream}) sono la relativa massima algebra.
+
+Eliminando i costruttori costanti (casi base) dalle algebre induttive, si possono ``isolare'' gli elementi infiniti:
+\begin{itemize}
+    \item eliminando \code{zero} dai naturali, si ottiene l'algebra che contiene solo il naturale infinito
+    \item eliminando \code{[]} dalle liste, si ottiene l'algebra che contiene solo stream
+\end{itemize}
+
+\subsection{Definizioni naif e circolari}
+Il modo che si sceglie per generare stream ne cambia drasticamente l'efficienza. 
+
+Possiamo definire le implementazioni di stream in due categorie: naif (basate sul ricalcolo), e circolari (basate sulla condivisione)
+
+\subsubsection{Definizioni naif}
+Una definizione naif richiama esplicitamente se stessa passando nuovamente gli argomenti
+
+\begin{haskellbox}{esempio: potenze e iterate}
+powers n = 1 : map (n*) (powers n)
+
+myIterate f x = x : map f (myIterate f x)
+\end{haskellbox}
+
+Queste implementazioni hanno complessità quadratica ($O(n^2)$), in quanto, per calcolare l'$n$-esimo elemento, il programma deve ripercorrere tutti i passaggi precedenti.
+
+La complessità è causata da un'assenza di memoizzazione del lavoro già fatto: ogni volta che si chiede un nuovo elemento viene generata una nuova chiamata alla funzione, creando una catena infinita di funzioni annidate (\code{map (*2) (map (*2) (map (*2) ...))}).
+
+
+\subsubsection{Definizioni circolari e lineari}
+Una definizione si dice circolare quando la struttura dati viene definita in termini di se stessa, creando un puntatore in memoria (Graph Reduction) invece di generare nuove chiamate a funzione. Questo garantisce una complessità lineare ($O(n)$) perché ogni elemento viene calcolato una volta sola.
+
+Esistono due modi principali per implementarle:
+\begin{itemize}
+    \item \textbf{livello globale}: senza parametri, il nome della lista è sufficiente per creare il riferimento circolare
+\begin{haskellbox}{}
+ones = 1 : ones
+fibs = 0 : 1 : zipWith (+) fibs (tail fibs)
+\end{haskellbox}
+    \item \textbf{all'interno di funzioni}: si usano \texttt{where} o \texttt{let} per ``fissare'' i parametri e definire la lista ricorsivamente rispetto alla variabile locale
+\begin{haskellbox}{}
+powers' n = ps where ps = 1 : map (*n) ps
+myIterate' f x = xs where xs = x : map f xs
+\end{haskellbox}
+\end{itemize}
+
+È utile saper distinguere tra velocità (linearità) e struttura di memoria (circolarità). Non tutte le ricorsioni dirette sono inefficienti.
+\begin{haskellbox}{}
+iterate1 f x = x : iterate1 f (f x)
+\end{haskellbox}
+
+Questa definizione è lineare ($O(n)$) pur non essendo circolare. Ogni passo produce un elemento applicando la funzione all'argomento corrente, senza accumulare operazioni sospese (come catene di \texttt{map}) che invece renderebbero la computazione quadratica.
+
+\begin{gframe}{Produttività}
+La ``regola d'oro'' per gli stream è garantire la \textbf{produttività}: il processo di generazione deve consumare meno input di quanto output produce. 
+\begin{itemize}
+    \item esempio non produttivo: \code{incstnts = (head incstnts) : (tail incstnts)}.
+    \subitem la definizione richiede di consumare la testa della lista prima ancora di averla generata, portando a una mancata terminazione (il processo ``si mangia la coda'')
+\end{itemize}
+\end{gframe}
+
+\section{Liste infinite come limiti}
+Una lista infinita può essere vista come il \textbf{limite delle sue approssimazioni finite}.
+
+Per gestire l'infinito e il calcolo parziale, Haskell usa il simbolo $\bot$ (bottom, anche usato per la contraddizione in logica), che rappresenta una computazione che non termina o che ha dato errore (corrisponde ad \code{undefined}).
+
+L'esecuzione di un programma può essere vista come un \textbf{accumulo di informazioni}:
+\begin{itemize}
+    \item un valore non ancora calcolato ($\bot$) non ha informazioni
+    \item man mano che il programma avanza, $\bot$ viene sostituito da valori reali (es: $1:\perp$, poi $1:2:\perp$)
+\end{itemize}
+
+Possiamo quindi definire una relazione di ordine parziale $\apprord$, l'\textbf{ordine di approssimazione}.
+
+Diciamo che $x \apprord y$ ($x$ approssima $y$) se $y$ contiene almeno tutte le informazioni di $x$.
+
+Per esempio, una lista infinita \code{[1..]} può essere vista come il limite di una sequenza di approssimazioni che diventano sempre più precise:
+$$\bot \apprord 1:\bot \apprord 1:2:\bot \apprord 1:2:3:\bot \dots $$
+
+Il limite di questa catena è la lista infinita completa.
+
+(Invece, una lista come $\bot, 1 : \bot, 2 : 1: \bot, 3 : 2 : 1 : \bot, \dots$ non converge a nessun limite: non si stabilizza a nessun valore e offre informazioni contraddittorie).
+
+\subsection{Domini, ordine e limiti}
+Vediamo nel dettaglio come Haskell misura l'informazione prodotta da un programma.
+
+\subsubsection{Tipi semplici}
+Per quanto riguarda i tipi semplici, l'informazione è un ``tutto o niente'': o il valore è calcolato, o non lo è.
+
+La relazione $\apprord$ per i tipi semplici è \textit{piatta} (\textbf{flat domain}): 
+$$x \apprord y \text{ sse } x = \bot \text{ oppure } x = y$$
+
+Si ha quindi per esempio $\bot \apprord$\code{True}, ma non ci sono relazioni tra \code{True} e \code{False}.
+
+\subsubsection{Costruttori di tipo}
+L'ordine si estende naturalmente ai tipi composti. L'idea è che una struttura è ``più definita'' di un'altra se i suoi componenti lo sono.
+
+\begin{itemize}
+    \item \textit{Coppie}: $(x, y) \apprord (x', y') \iff x \apprord x' \land y \apprord y'$
+    \item \textit{Either}: 
+        \begin{itemize}
+            \item $\bot \apprord$\code{Left}$\bot$, \code{Right}$\bot$
+            \item \code{Left}$x \apprord$ \code{Left} $x' \iff x \apprord x'$
+            \item \code{Right}$x \apprord$ \code{Right} $x' \iff x \apprord x'$
+        \end{itemize}
+\end{itemize}
+
+\begin{center}
+    \includegraphics[width=8cm]{assets/order1}
+\end{center}
+
+\subsubsection{Liste e funzioni}
+Per le liste si ha:
+\begin{itemize}
+    \item $\bot \apprord xs$
+    \item $[ \ ] \apprord xs \iff xs = [ \ ] \land (x:xs) \not\apprord [ \ ]$
+    \item $x:xs \apprord y:ys \iff x \apprord y \land xs \apprord ys$
+\end{itemize}
+
+Per esempio, $[1, \bot, 3]$ e $1:2:\bot$ sono approssimazioni di $[1,2,3]$.
+
+\begin{center}
+    \includegraphics[width=8cm]{assets/order2}
+\end{center}
+
+Invece, una funzione $f$ ne approssima un'altra $g$ se per ogni possibile input $x$, l'output di $f$ approssima quello di $g$:
+$$\text{date } f,g: a \to b \text{ si ha } f \apprord_{a\to b} g \iff \forall x.fx \apprord_b gx$$
+
+\subsubsection{Ordine e limiti}
+
+\begin{defframe}{Complete Partial Order}{}
+Se abbiamo una catena di approssimazioni $x_1 \apprord x_2 \apprord x_3 \dots$, questa tenderà ad un limite $\sqcup x = \lim_{n\to\infty} x_n$ che soddisfa le seguenti condizioni:
+\begin{itemize}
+    \item per ogni $n$, $x_n \apprord \sqcup x$ (il limite è un maggiorante)
+    \item se per ogni $n$, $x_n \apprord y$, allora $\sqcup x \apprord y$ (il limite è il sup)
+\end{itemize}
+{\color{gray}(simile al lemma di Zorn ma più forte)}
+
+Un ordinamento che soddisfa queste proprietà si definisce \textbf{Complete Partial Order}
+\end{defframe}
+
+I tipi per domini di funzioni computabili (e quindi eseguibili da una macchina) sono solitamente CPO.
+
+\begin{defframe}{Funzioni computabili}{}
+    Una funzione computabile gode di due proprietà:
+    \vspace{-0.5em}
+    \begin{enumerate}
+        \item \textbf{monotonia}: $x \apprord y \implies f x \apprord f y$
+        \item \textbf{continuità}: $f(\sqcup x) = \sqcup f x$
+    \end{enumerate}
+\end{defframe}
+
+\begin{gframe}{Approfondimento: computabilità logica vs. semantica}
+È interessante comparare la definizione di funzione computabile fornita dalla teoria dei domini a quella classica della logica matematica (funzioni $\mu$-ricorsive). 
+
+Mentre la definizione logica è di tipo costruttivo - identifica la classe delle funzioni calcolabili come la minima classe ottenuta partendo da funzioni base (zero, successore, proiezioni) e applicando operatori di chiusura (composizione, minimalizzazione) -, la definizione basata sui CPO è di tipo semantico. Essa stabilisce i vincoli necessari affinché una funzione possa operare su informazioni parziali o infinite:
+
+\begin{itemize}
+    \item La \textit{monotonia} garantisce che la computazione sia un processo ad accumulo di informazione: se l'input diventa più definito ($x \apprord y$), l'output non può diminuire o cambiare l'informazione già prodotta ($f x \apprord f y$)
+    \item La \textit{continuità} formalizza la natura finitaria della calcolabilità: il valore di una funzione su un input infinito (limite) deve essere determinato esclusivamente da ciò che la funzione produce sulle approssimazioni finite di quell'input ($f(\sqcup x) = \sqcup f x$)
+\end{itemize}
+
+In questo contesto, la parzialità delle funzioni logiche viene "internalizzata" nel dominio tramite l'elemento $\perp$ (bottom), che rappresenta il livello minimo di informazione o una computazione non terminata. Questo permette di trattare la non-terminazione non come un'assenza di valore, ma come un valore matematico ben definito su cui è possibile applicare i teoremi di punto fisso per dare un senso alla ricorsione.
+\end{gframe}
+
+Alcuni esempi di funzioni non computabili sono:
+\begin{itemize}
+    \item $
+f(x) = \begin{cases}
+    0 & x = \bot \\
+    1 & x \neq \bot
+\end{cases}
+$
+\begin{itemize}
+    \item non è computabile perché non è monotona: $\bot \apprord x$, ma $0 \not\apprord 1$
+\end{itemize}
+
+\item $
+f(xs) = \begin{cases}
+    \bot & xs \text{ è finita o parziale}\\
+    1 & xs \text{ è infinita}
+\end{cases}
+$
+\begin{itemize}
+    \item non è computabile perché non è continua: $\sqcup g \ x_n = \bot \neq 1 = g(\sqcup \ x_n)$
+\end{itemize}
+\end{itemize}
+\section{Teoremi di punto fisso}
+
+Nella semantica denotazionale, l'esecuzione di un programma ricorsivo è vista come la ricerca di un "punto fisso" di una funzione. Per formalizzare questo concetto, dobbiamo estendere la nozione di CPO a strutture algebriche più ricche.
+
+\begin{defframe}{Reticolo Completo}{}
+    Un \textbf{reticolo completo} (Complete Lattice) $(L, \apprord)$ è un insieme parzialmente ordinato in cui \textit{ogni} sottoinsieme $A \subseteq L$ possiede sia un estremo inferiore che un estremo superiore:
+    \begin{itemize}
+        \item Estremo superiore (Supremum): $\sqcup A = \min \{ x \mid \forall a \in A.\ x \ge a \}$
+        \item Estremo inferiore (Infimum): $\sqcap A = \max \{ x \mid \forall a \in A.\ x \le a \}$
+    \end{itemize}
+\end{defframe}
+
+Avere un reticolo completo ci permette di enunciare due teoremi fondamentali che garantiscono l'esistenza (e la calcolabilità) dei punti fissi per le funzioni su questi domini (un valore $x$ è un \textit{punto fisso} per una funzione $f$ se $f(x) = x$).
+
+\begin{defframe}{Teorema di Knaster-Tarski}{}
+    In un reticolo completo $(L, \apprord)$, \textbf{ogni funzione monotona} ammette un massimo e un minimo punto fisso.
+\end{defframe}
+
+Il teorema di Knaster-Tarski assicura l'esistenza del punto fisso, ma non dice come trovarlo. Il teorema di Kleene ci fornisce invece un metodo costruttivo.
+
+\begin{defframe}{Teorema di Kleene (del minimo punto fisso)}{}
+    Se una funzione $f$ è \textbf{continua}, il suo minimo punto fisso (Least Fixed Point, LFP) può essere costruito iterativamente partendo dal livello minimo di informazione ($\bot$).
+    
+    Esso è definito come il limite delle applicazioni ripetute di $f$:
+    \[ \text{LFP}(f) = f^\omega(\bot) = \lim_{n\to\infty} f^n(\bot) = \sqcup \{ \bot, f(\bot), f(f(\bot)), \dots \} \]
+    \begin{proofframe}
+    Sappiamo che la sequenza $\bot \apprord f(\bot) \apprord f(f(\bot)) \dots$ è una catena monotona crescente e che quindi (poiché ci troviamo in un CPO) ha un estremo superiore.
+
+    Possiamo dimostrare che questo estremo superiore $f^\omega$ è un punto fisso sfruttando la continuità:
+    \begin{align*}
+        f^\omega &= \sup \{ f^i(\bot) \mid i < \omega \} \quad &\text{(per definizione di } f^\omega \text{)} \\
+        &= \sup \{ f(f^i(\bot)) \mid i < \omega \} \quad &\text{(spostando l'indice di 1 passo)} \\
+        &= f(\sup \{ f^i(\bot) \mid i < \omega \}) \quad &\text{(\textbf{per la continuità di } } f\text{)} \\
+        &= f(f^\omega) \quad &\text{(sostituendo la definizione di } f^\omega\text{)}
+    \end{align*}
+    Poiché $f(f^\omega) = f^\omega$, $f^\omega$ è per definizione un punto fisso di $f$.
+    \end{proofframe}
+\end{defframe}
+
+\begin{gframe}{Significato computazionale dei teoremi di punto fisso}
+Quando scriviamo una definizione ricorsiva come \code{ones = 1 : ones}, stiamo implicitamente definendo un'equazione: $x = f(x)$, dove la funzione è $f(x) = 1 : x$ - stiamo quindi cercando il punto fisso di $f$.
+
+Il Teorema di Kleene ci spiega esattamente cosa fa la valutazione lazy: il computer costruisce la lista infinita partendo dal non-calcolato ($\bot$) e applicando la funzione in modo continuo:
+\begin{enumerate}
+    \item $f^0(\bot) = \bot$ \hfill \textit{(nessuna informazione)}
+    \item $f^1(\bot) = 1 : \bot$ \hfill \textit{(primo elemento noto)}
+    \item $f^2(\bot) = 1 : 1 : \bot$ \hfill \textit{(secondo elemento noto)}
+\end{enumerate}
+Il limite di questo processo all'infinito ($f^\omega$) è proprio la nostra lista infinita. La continuità garantisce che per estrarre una quantità di informazione finita dall'output (es. \texttt{take 2 ones}), il computer debba compiere solo un numero finito di passi, senza bloccarsi cercando di valutare l'intera struttura infinita.
+\end{gframe}
+
+\section{TODO: induzione e coinduzione}
+
+\section{Funtori e Applicativi}
+
+\begin{gframe}{Concetti principali}
+    Sia i Funtori che gli Applicativi servono a gestire computazioni all'interno di un \textbf{contesto}, ma con ``poteri'' diversi:
+    \begin{itemize}
+        \item \textbf{Functors}: permettono di applicare una funzione "pura" a un valore nel contesto - modificano il contenuto ma non la struttura del contesto;
+        \item \textbf{Applicatives}: permettono di applicare funzioni che sono esse stesse dentro un contesto a valori nel contesto - sono necessari per gestire funzioni con più argomenti;
+    \end{itemize}
+\end{gframe}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{classe} & \textbf{operatore} & \textbf{scopo} \\ \hline
+\code{Functor} & \code{fmap :: (a -> b) -> f a -> f b} & trasformazione (1 argomento) \\ \hline
+\code{Applicative} & \code{<*> :: f (a -> b) -> f a -> f b} & combinazione ($n$ argomenti) \\ \hline
+\end{tabular}
+\end{center}
+
+\subsection{Funtori}
+
 L'idea alla base di un \textbf{funtore} è la generalizzazione del funzionale \code{map}, tipicamente utilizzato per le liste, a tutti i possibili costruttori di tipo.
 
 Se si ha:
@@ -882,7 +1158,7 @@ inc :: Functor t => t Int -> t Int
 inc = fmap (+1)
 \end{haskellbox}
 
-\subsection{Functor laws}
+\subsubsection{Functor laws}
 Affinché un funtore sia definito correttamente, è necessario che rispetti le due functor laws:
 \begin{enumerate}
     \item \code{fmap id = id}
@@ -895,7 +1171,7 @@ Nota bene: queste leggi non possono essere verificate dal type-checker, ma sono 
     Possiamo notare, osservando le \textit{functor laws}, che un funtore è effettivamente un \textbf{omomorfismo tra categorie} (un omomorfismo ``classico'' preserva l'operazione di gruppo, mentre un funtore preserva la ``struttura'' di una categoria, ovvero gli oggetti - i tipi -, e i morfismi - le funzioni.)
 \end{gframe}
 
-\section{Applicativi}
+\subsection{Applicativi}
 Un normale funtore permette di usare \code{fmap} con un solo argomento, ma è naturale voler generalizzare: si vuole considerare una forma astratta di applicazione, che generalizzi l'usuale applicazione di funzioni. Per esempio, si vuole poter propagare un fallimento nel caso di \code{Maybe}, o applicare una funzione $n$-aria a valori ``inscatolati'' senza dover istanziare $n$ funtori.
 
 Haskell definisce quindi la classe \code{Applicative}.
@@ -925,7 +1201,7 @@ instance Applicative Maybe where
     \end{haskellbox}
 \end{gframe}
 
-\subsection{Liste come applicativi}
+\subsubsection{Liste come applicativi}
 L'istanza del Prelude delle liste non si comporta come una \code{zipWith} nell'applicare le funzioni presenti in una lista, ma modella un non-determinismo. Una lista non viene vista come una sequenza, ma come un valore che può assumere più risultati posssibili contemporaneamente. Quindi, quando si applica una lista di funzioni ad una lista di valori, l'applicativo contiene tutte le combinazioni possibili (prodotto cartesiano).
 
 \begin{haskellbox}{}
@@ -947,6 +1223,51 @@ Se eseguiamo quindi \code{pure (*) <*> [1,2] <*> [3,4]}:
 \end{itemize}
 
 A volte si vuole però che le liste si comportino come \code{zipWith} - per questo, haskell introduce \code{ZipList}
+
+\begin{haskellbox}{}
+ -- per poter definire un'altra istanza di Applicative senza conflitti
+newtype ZipList a = Z [a]
+
+instance Applicative ZipList where
+    -- pure : a -> ZipList a
+    pure x = Z (repeat x) -- crea una lista infinita di x
+
+    -- <*> : [a -> b] -> [a] -> [b]
+    Z fs <*> Z xs = Z (zipWith (\f x -> f x) fs xs)
+\end{haskellbox}
+
+\begin{itemize}
+    \item \code{pure} è \code{repeat} così che si adatti a qualsiasi lunghezza della lista di valori con cui verrà  accoppiata (se restituisse un solo elemento, \code{zipWith} si fermerebbe subito)
+    \item \code{<*>} è \code{zipWith} - applica la funzione in posizione 1 al valore in posizione 1 ecc
+\end{itemize}
+
+\subsubsection{Applicative laws}
+Come i funtori, anche gli applicatori hanno una serie di regole da rispettare:
+\begin{enumerate}
+    \item \code{<*>} \textbf{preserva l'identità} 
+        \subitem \code{pure id <*> x = x}
+        \subitem se prendiamo la funzione identità, la inseriamo in un contesto e la applichiamo ad un valore \code{x} già contestualizzato, il risultato deve rimanere \code{x}
+    \item \code{<*>} \textbf{preserva l'applicazione di funzioni}
+        \subitem \code{pure (g x) = pure g <*> pure x}
+        \subitem applicare \code{g} ad un valore \code{x} e poi ``impacchettare'' il risultato dà lo stesso esito che applicare la versione ``impacchettata'' di \code{g} alla versione ``impacchettata'' di \code{x}
+    \item \textbf{non conta l'ordine} con cui si fa embedding nel contesto
+        \subitem \code{x <*> pure y = pure (\textbackslash g -> g y) <*> x}
+    \item \textbf{composizione} di \code{<*>}
+        \subitem \code{x <*> (y <*> z) = (pure (.) <*> x <*> y) <*> z}
+        \subitem (forma di associatività per \code{<*>})
+        \subitem la composizione di funzioni \code{(.)} può essere ``lifted'' a livello applicativo per garantire che la sequenza delle applicazioni sia coerente
+\begin{itemize}
+    \item ovvero, applicare due funzioni una dopo l'altra è identico a comporle prima in un'unica funzione e poi applicarla:
+        \subitem \code{x <*> (y <*> z)}
+        \subitem prima si applica la funzione \code{y} al valore \code{z} (ottenendo un risultato nel contesto), e poi si applica \code{x} a tale risultato - è quindi \code{x(y(z))}
+    \subitem \code{(pure (.) <*> x <*> y) <*> z}
+\subitem qui l'operatore di composizione standard \code{(.)} viene ``sollevato'' (lifted) nel contesto, permettendo di fondere le due funzioni \code{x} e \code{y} dentro il contesto - si crea quindi una funzione composta che sarà applicata a \code{z}
+\subitem quindi, si applica \code{x . y} a \code{z}, ottenendo anche qui \code{x(y(z))}
+\end{itemize}
+\end{enumerate}
+
+\section{TODO: monadi (14)}
+\section{TODO: monadi I/O ecc (15)}
 
 
 
