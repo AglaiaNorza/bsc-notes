@@ -1114,6 +1114,117 @@ iter f b (x:xs) = f x (iter f b xs)  -- corrisponde a foldr f b xs
 \subsection{Insiemi coinduttivi}
 L'insieme coinduttivo che origina dai costruttori dei numeri naturali è formato dai naturali, più un \textbf{naturale infinito non-standard} $\omega = S^{\infty}$, ottenuto da infinite applicazioni del costruttore $S$.
 
+L'insieme coinduttivo più interessante è quello delle liste infinite (o \textbf{Stream}). Non ha senso definire funzioni per ricorsione su di esse, ma si possono sempre definire funzioni che creano Stream di cui, in tempo finito, si può accedere ad una porzione finita.
+
+Il principio di ricorsione sulle Stream si può definire tramite due funzionali:
+\begin{itemize}
+    \item \code{iterate}, che permette di definire una funzione $f: A \to Stream \ B$
+        \subitem data una funzione \code{f :: a -> b } ed un valore \code{x :: b}, permette di costruire uno stream in questo modo:
+        \begin{haskellbox}{}
+iterate f x = x : iterate f (f x)
+        \end{haskellbox}
+
+        (crea quindi lo stream \code{x : f x : f (f x) : ... })
+\end{itemize}
+
+Conviene però avere un principio di ricorsione più generale: la cosiddetta \textbf{co-ricorsione}, ottenibile con il funzionale \code{unfold}.
+
+\begin{haskellbox}{}
+unfold :: (b -> (a, b)) -> b -> Stream a
+unfold f y = x : unfold f y' where (x, y') = f y
+\end{haskellbox}
+
+Se invece vogliamo considerare l'algebra che contiene la lista vuota, allora la massima co-algebra contiene anche le liste finite. In tal caso, possiamo definire il funzionale \code{unfoldLS}, che costruisce anche liste finite:
+\begin{haskellbox}{}
+unfold :: (b -> Bool) -> (b -> (a, b)) -> b -> [a]
+unfold p f y = if p y then []
+            else x : unfold p f y' where (x, y') = f y
+\end{haskellbox}
+
+\subsection{Bisimulazione}
+Come per gli insiemi induttivi, abbiamo bisogno di un modo per derivare equivalenze su insiemi co-iduttivi. La controparte dell'induzione che ci permette di farlo è la \textbf{bisimulazione}.
+
+L'idea alla base della bisimulazione è osservare se due processi (o liste) ``si comportano'' allo stesso modo per ogni osservazione finita che possiamo farne.
+
+Si procede in questo modo:
+\begin{enumerate}
+    \item si definisce una relazione $R$ tra due liste
+    \item se si dimostra che per ogni coppia $(xs, ys) \in R$, le loro teste sono uguali e le loro code sono ancora in $R$, allora le liste si dicono \textbf{bisimili} ($\approx$)
+\end{enumerate}
+
+Formalmente, si definisce una bisimulazione $R$ tra coppie di liste come segue:
+\begin{align*}
+    R \ xs \ ys \implies & xs = ys = \bot \text{ oppure } xs = ys = [ \ ] \\
+                         & \text{oppure } \exists v, vs, ws \text{ t.c. } xs = v:vs \land ys = v:ws \land vs \ R \ ws
+\end{align*}
+
+Definiamo quindi $xs \approx ys$ se esiste una bisimulazione $R$ tale che $xs \ R \ ys$, il che equivale a scegliere la \textbf{massima equivalenza}, definita come massimo punto fisso.
+
+\begin{gframe}{Prova per bisimulazione}
+    Possiamo dimostrare per bisimulazione che:
+    \begin{haskellbox}{}
+map f (iterate f x) = iterate f (f x)
+    \end{haskellbox}
+    Ci basta dimostrare che la relazione $R$ che contiene:
+    $$\{ \code{map f (iterate f x), iterate f (f x)} \mid \code{f,x} \text{ opportuni} \}$$
+    è una bisimulazione.
+
+    Facendo ricorso all'algebra dei programmi, possiamo ``svolgere'' le due espressioni:
+    \begin{haskellbox}{}
+map f (iterate f x) = map f (x : iterate f (f x))
+                    = f x : map f (iterate f (f x))
+
+    \end{haskellbox}
+e anche
+    \begin{haskellbox}{}
+iterate f (f x) = f x : iterate f (f (f x))
+    \end{haskellbox}
+
+    Entrambe producono la stessa testa (\code{f x}), e le code sono in $R$ (in cui la nuova funzione applicata sarà \code{f.f} invece di \code{f}).
+\end{gframe}
+
+\subsection{Dimostrazione per approssimazione}
+L'alternativa alla co-induzione consiste nell'effettuare una dimostrazione per induzione sulle approssimazioni finite di una lista. Per farlo, si internalizza in Haskell la funzione \code{approx}, strettamente imparentata con \code{take}:
+
+\begin{haskellbox}{}
+approx 0 xs = undefined
+approx n [] = []
+approx n (x:xs) = x : approx (n-1) xs
+\end{haskellbox}
+
+La proprietà fondamentale di \code{approx} è che il limite delle approssimazioni di una lista è la lista stessa:
+$$\sqcup_{n} \text{approx } n \ xs = xs$$
+
+Di conseguenza, per dimostrare l'uguaglianza tra due liste $xs$ e $ys$, è sufficiente mostrare che tutte le loro approssimazioni finite siano uguali per ogni $n$:
+$$\forall n, \text{approx } n \ xs = \text{approx } n \ ys \implies xs = ys$$
+
+\begin{gframe}{Esempio}
+Proviamo a dimostrare nuovamente la proprietà:
+$$\text{approx } n \ (\text{map } f \ (\text{iterate } f \ x)) = \text{approx } n \ (\text{iterate } f \ (f \ x))$$
+
+\begin{itemize}
+    \item \textbf{caso base:} per $n = 0$ la proprietà è banalmente vera perché \code{approx 0 xs} restituisce sempre $\perp$ (undefined).
+
+    \item \textbf{caso induttivo:} si procede riducendo le due espressioni separatamente tramite program calculation e applicando l'ipotesi induttiva:
+
+\begin{align*}
+    & \text{approx } (n+1) \ (\text{iterate } f \ (f \ x)) \\
+    = & \{ \text{def. di iterate} \} \\
+    & \text{approx } (n+1) \ (f \ x : \text{iterate } f \ (f \ (f \ x))) \\
+    = & \{ \text{def. di approx} \} \\
+    & f \ x : \text{approx } n \ (\text{iterate } f \ (f \ (f \ x))) \\
+    = & \{ \text{ipotesi induttiva} \} \\
+    & f \ x : \text{approx } n \ (\text{map } f \ (\text{iterate } f \ (f \ x))) \\
+    = & \{ \text{def. di approx al contrario} \} \\
+    & \text{approx } (n+1) \ (f \ x : \text{map } f \ (\text{iterate } f \ (f \ x))) \\
+    = & \{ \text{def. di map al contrario} \} \\
+    & \text{approx } (n+1) \ (\text{map } f \ (x : \text{iterate } f \ (f \ x))) \\
+    = & \{ \text{def. di iterate al contrario} \} \\
+    & \text{approx } (n+1) \ (\text{map } f \ (\text{iterate } f \ x))
+\end{align*}
+\end{itemize}
+\end{gframe}
+
 \section{Funtori e Applicativi}
 
 \begin{gframe}{Concetti principali}
