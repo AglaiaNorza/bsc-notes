@@ -856,7 +856,7 @@ Esistono due modi principali per implementarle:
 ones = 1 : ones
 fibs = 0 : 1 : zipWith (+) fibs (tail fibs)
 \end{haskellbox}
-    \item \textbf{all'interno di funzioni}: si usano \texttt{where} o \texttt{let} per ``fissare'' i parametri e definire la lista ricorsivamente rispetto alla variabile locale
+    \item \textbf{all'interno di funzioni}: si usano \code{where} o \code{let} per ``fissare'' i parametri e definire la lista ricorsivamente rispetto alla variabile locale
 \begin{haskellbox}{}
 powers' n = ps where ps = 1 : map (*n) ps
 myIterate' f x = xs where xs = x : map f xs
@@ -868,7 +868,7 @@ myIterate' f x = xs where xs = x : map f xs
 iterate1 f x = x : iterate1 f (f x)
 \end{haskellbox}
 
-Questa definizione è lineare ($O(n)$) pur non essendo circolare. Ogni passo produce un elemento applicando la funzione all'argomento corrente, senza accumulare operazioni sospese (come catene di \texttt{map}) che invece renderebbero la computazione quadratica.
+Questa definizione è lineare ($O(n)$) pur non essendo circolare. Ogni passo produce un elemento applicando la funzione all'argomento corrente, senza accumulare operazioni sospese (come catene di \code{map}) che invece renderebbero la computazione quadratica.
 
 \begin{gframe}{Produttività}
 La ``regola d'oro'' per gli stream è garantire la \textbf{produttività}: il processo di generazione deve consumare meno input di quanto output produce. 
@@ -1052,10 +1052,67 @@ Il Teorema di Kleene ci spiega esattamente cosa fa la valutazione lazy: il compu
     \item $f^1(\bot) = 1 : \bot$ \hfill \textit{(primo elemento noto)}
     \item $f^2(\bot) = 1 : 1 : \bot$ \hfill \textit{(secondo elemento noto)}
 \end{enumerate}
-Il limite di questo processo all'infinito ($f^\omega$) è proprio la nostra lista infinita. La continuità garantisce che per estrarre una quantità di informazione finita dall'output (es. \texttt{take 2 ones}), il computer debba compiere solo un numero finito di passi, senza bloccarsi cercando di valutare l'intera struttura infinita.
+Il limite di questo processo all'infinito ($f^\omega$) è proprio la nostra lista infinita. La continuità garantisce che per estrarre una quantità di informazione finita dall'output (es. \code{take 2 ones}), il computer debba compiere solo un numero finito di passi, senza bloccarsi cercando di valutare l'intera struttura infinita.
 \end{gframe}
 
-\section{TODO: induzione e coinduzione}
+\section{Induzione e co-induzione}
+
+Nella teoria dei tipi e nella programmazione funzionale, le strutture dati possono essere definite in due modi duali: tramite induzione (costruendo valori) o tramite co-induzione (osservando valori). Queste due visioni corrispondono alla ricerca di minimi e massimi punti fissi.
+
+\begin{defframe}{Insiemi (Algebre) Induttivi}{}
+    Un insieme \textbf{induttivo} $A$ viene definito "partendo dal basso" (tipicamente dall'insieme vuoto), definendo le regole (costruttori) che permettono di creare valori di tipo $A$.
+    
+    \begin{itemize}
+        \item $A$ è il \textbf{minimo} insieme chiuso rispetto alle operazioni di costruzione (rappresentato da un assioma di minimalità, es. "nient'altro è un numero naturale");
+        \item L'insieme $A$ rappresenta il \textbf{minimo punto fisso} di un'operazione di costruzione;
+        \item Gli elementi di $A$ sono il risultato di un'applicazione \textbf{finita} dei costruttori, a partire da costruttori costanti.
+            \item Da un punto di vista logico, ad $A$ è associato un \textbf{principio di induzione} per provare proposizioni su $A$.
+            \item Da un punto di vista informatico (minima algebra / oggetto iniziale in Teoria delle Categorie), ad $A$ è associato un principio di \textbf{ricorsione e/o iterazione} (come \code{fold}) per definire funzioni che "consumano" il tipo: $f \colon A \to B$.
+    \end{itemize}
+\end{defframe}
+
+\begin{defframe}{Insiemi (Co-algebre) Co-induttivi}{}
+    Un insieme \textbf{co-induttivo} $A$ viene definito "partendo dall'alto" (ad esempio da un universo $U$), definendo le regole (distruttori) che permettono di riconoscere i valori che \textit{non} appartengono ad $A$.
+    
+    \begin{itemize}
+        \item $A$ è il \textit{massimo} insieme chiuso rispetto alle operazioni di eliminazione. 
+        \item L'insieme $A$ rappresenta il \textbf{massimo punto fisso} di un'operazione di eliminazione.
+        \item Gli elementi scartati ($U \setminus A$) vengono riconosciuti dopo un numero finito di applicazioni dei distruttori, ma per gli elementi di $A$ questo processo può continuare all'infinito (es. liste infinite o stream).
+            \item Da un punto di vista logico, ad $A$ è associato un \textbf{principio di co-induzione} (come la bisimulazione), usato solitamente per provare \textit{equivalenze} su $A$.
+            \item Da un punto di vista informatico (massima algebra / oggetto finale in Teoria delle Categorie), ad $A$ è associato un principio di \textbf{co-ricorsione e/o co-iterazione} (come \code{unfold} o \code{iterate}) per definire funzioni che "generano" o costruiscono oggetti di tipo $A$: $f \colon B \to A$.
+    \end{itemize}
+\end{defframe}
+
+\subsection{Insiemi induttivi}
+\begin{gframe}{Approfondimento: lemma di Lambek}
+        Se consideriamo l'algebra induttiva come un \textit{oggetto iniziale} nella Teoria delle Categorie, il principio di ricorsione in programmazione è l'incarnazione computazionale dell'\textbf{omomorfismo unico} definito dal Lemma di Lambek (vedi \href{https://raw.githubusercontent.com/AglaiaNorza/notes-ig/main/terzo%20anno/linguaggi%20di%20programmazione.pdf}{\underline{appunti del corso ``Linguaggi di programmazione''} })
+    
+    Definire una funzione ricorsiva $f \colon A \to B$ su un tipo induttivo $A$ significa costruire l'unico omomorfismo unico che mappa i costruttori di $A$ nelle operazioni di un'altra algebra $B$.
+\end{gframe}
+
+    Ogni tipo induttivo ha il proprio operatore fondamentale (un costrutto di ordine superiore) che si occupa di "costruire" questo omomorfismo:
+    \begin{itemize}
+    \item \textbf{Tipi ``non ricorsivi'' (Booleani, Either):} anche se raramente definiti come tipi ricorsivi, possiedono un principio di ricorsione. Per i booleani è semplicemente l'\code{if-then-else}, mentre per il tipo \code{Either} è l'applicazione di due funzioni $g$ e $h$ a seconda del costruttore (\code{Left} o \code{Right}). Il principio di induzione associato è l'analisi per casi.
+        
+        \item \textbf{Numeri naturali ($\mathbb{N}$):} l'operatore matematico che costruisce l'omomorfismo è \textbf{$\rho$ (iteratore)}. In Haskell, esso prende la forma della funzione \code{iter}:
+        \begin{haskellbox}{}
+iter f b 0 = b
+iter f b n = f (iter f b (n-1))
+\end{haskellbox}
+
+        Questo comportamento ricalca esattamente la semantica dei \textbf{Numerali di Church}. 
+
+Per ottenere una potenza espressiva maggiore, si passa allo schema della \textit{ricorsione primitiva} (l'operatore \code{rec}), in cui la funzione $f$ riceve in input anche il contatore $(n-1)$.
+        
+        \item \textbf{Liste finite:} sulle liste l'operazione che costruisce l'omomorfismo "sostituendo" i costruttori della lista con operazioni su un altro tipo è la \code{foldr}. Rappresenta il principio di iterazione/ricorsione generalizzato per le liste:
+    \begin{haskellbox}{}
+iter f b [] = b
+iter f b (x:xs) = f x (iter f b xs)  -- corrisponde a foldr f b xs
+    \end{haskellbox}
+    \end{itemize}
+
+\subsection{Insiemi coinduttivi}
+L'insieme coinduttivo che origina dai costruttori dei numeri naturali è formato dai naturali, più un \textbf{naturale infinito non-standard} $\omega = S^{\infty}$, ottenuto da infinite applicazioni del costruttore $S$.
 
 \section{Funtori e Applicativi}
 
