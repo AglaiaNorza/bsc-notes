@@ -1475,7 +1475,125 @@ Come i funtori, anche gli applicatori hanno una serie di regole da rispettare:
 \end{itemize}
 \end{enumerate}
 
-\section{TODO: monadi (14)}
+\section{Monadi}
+Le monadi rappresentano il passo successivo rispetto agli applicativi per la gestione controllata di \textbf{side-effects}. Se un applicativo permette di combinare calcoli indipendenti, la monade permette di gestire calcoli in cui il passo successivo \textbf{dipende} dal risultato di quello precedente.
+
+\subsection{Introduzione}
+Per comprendere perché le monadi siano utili, consideriamo un valutatore di espressioni aritmetiche che supporta costanti e divisioni:
+
+\begin{haskellbox}{}
+data Term = Const Int | Div Term Term
+
+eval :: Term -> Int
+eval (Const a)   = a
+eval (Div t u)   = eval t `div` eval u
+\end{haskellbox}
+
+Questa implementazione è elegante ma fragile: un'espressione come \code{Div (Const 1) (Const 0)} farà crashare il programma.
+
+Si può usare il tipo \code{Maybe Int} per modellare il possibile fallimento. Tuttavia, il codice diventa immediatamente prolisso a causa della propagazione manuale dell'errore:
+
+\begin{haskellbox}{}
+eval :: Term -> Maybe Int
+eval (Const a) = Just a
+eval (Div t u) = case eval t of
+                   Nothing -> Nothing
+                   Just n  -> case eval u of
+                                Nothing -> Nothing
+                                Just m  -> if m == 0 then Nothing 
+                                           else Just (n `div` m)
+\end{haskellbox}
+
+La divisione (il vero senso della funzione) è offuscata dalla gestione dei \code{Nothing}.
+
+Si potrebbe pensare di usare l'operatore \code{<*>} degli applicativi per pulire il codice. Tuttavia, gli applicativi sono insufficienti quando la struttura del calcolo dipende dal valore dei risultati intermedi:
+
+\begin{itemize}
+    \item L'operatore \code{<*>} (\code{f (a -> b) -> f a -> f b}) richiede che la funzione da applicare sia "pura" e che i contesti (\code{f}) siano già definiti. In un calcolo applicativo, l'intera sequenza di effetti è determinata a priori: non si può usare il valore estratto da un \code{Maybe} per decidere quale sarà il prossimo "effetto".
+    
+    \item Se provassimo a usare una funzione che genera essa stessa un contesto, come 
+
+        \code{safeDiv :: Int -> Int -> Maybe Int}, l'applicazione risulterebbe in un tipo
+
+        \code{Maybe (Maybe Int)}. 
+    \begin{itemize}
+        \item e.g. \code{pure safeDiv <*> Just 10 <*> Just 0} produce \code{Just (Nothing)}
+    \end{itemize}
+    L'applicativo non possiede un meccanismo per ``appiattire'' questi due livelli di contesto in uno solo.
+    
+\end{itemize}
+ Nella divisione, il fatto che il secondo argomento sia zero determina se il calcolo successivo deve fallire o meno. In Haskell, questa capacità di far sì che il ``guscio'' esterno (il contesto) venga generato dal valore contenuto nel passo precedente è l'essenza delle Monadi.
+
+    In sintesi: gli Applicativi modellano calcoli indipendenti (i contesti sono paralleli), mentre le Monadi (come ora vedremo) modellano calcoli sequenziali, dove il risultato di un'operazione influenza la creazione della successiva.
+
+\begin{gframe}{}
+In termini di Teoria delle Categorie, l'applicativo gestisce contesti indipendenti (funtori monoidali), mentre per concatenare funzioni del tipo $A \to M(B)$ (chiamate frecce di Kleisli) abbiamo bisogno di una Monade.
+\end{gframe}
+
+\subsection{Monadi (shall I be pure or impure?)}
+Molti aspetti della programmazione (come strutture dati mutabili e input/output) non hanno una rappresentazione efficace nel mondo funzionale, mentre altri potrebbero beneficiare da una programmazione con side-effects (come eccezioni e tracciamento delle computazioni).
+
+Alcuni linguaggi funzionali, come ML, introducono costrutti non funzionali come puntatori, eccezioni, ecc.; Haskell cerca un'integrazione basata su concetti matematici.
+
+La classe \code{Monad} si può definire tramite gli applicativi in questo modo:
+\begin{haskellbox}{}
+class Applicative m => Monad m where
+    (>>=)  :: m a -> (a -> m b) -> m b  -- operatore "bind"
+    (>>)   :: m a -> m b -> m b -- "sequence"/"then"
+    return :: a -> m a  -- identico a "pure"
+\end{haskellbox}
+\begin{itemize}
+    \item \code{return} (o \code{pure}) prende un valore e lo inserisce nel contesto minimo necessario
+    \item \code{>>=} (\textbf{bind}) prende un valore ``impacchettato'' (\code{m a}), lo ``spacchetta'', e lo passa ad una funzione che accetta un valore puro  e restituisce un nuovo valore impacchettato (\code{a -> mb})
+        \begin{itemize}
+            \item in questo modo, la computazione viene sequenzializzata: prima viene valutato \code{m : M a} e poi il risultato viene passato a \code{f}
+        \end{itemize}
+    \item \code{>>} è una versione semplificata del bind: mentre \code{>>=} prende il valore della prima computazione e lo passa ad una funzione, \code{>>} esegue la computazione, ne scarta il valore prodotto e passa direttamente alla seconda computazione (il suo tipo è infatti quello della seconda computazione - in una computazione sequenziale, l'ultima istruzione è quella che determina il valore finale)
+        \begin{itemize}
+            \item \code{m >> f} è equivalente a \code{m >>= \_ -> f}
+            \item serve quindi quando si vogliono solo i side-effects ma non quello che viene ritornato (e.g. operazioni di scrittura)
+            \item in ogni caso, anche se il valore di tipo \code{a} viene scartato, il contesto (effetto computazionale) di \code{m a} viene preservato e combinato con quello di \code{b}
+        \end{itemize}
+\end{itemize}
+
+In questo modo, una funzione \code{f : a -> b} viene rimpiazzata da \code{f' : a -> M b}, in cui \code{M} \textbf{cattura gli effetti computazionali} di \code{f}.
+
+\subsection{Alcune monadi note}
+La \textbf{monade identità} è simile all'elemento neutro di un'algebra. Serve a rappresentare una computazione senza un effetto collaterale, e permette di definire una funzione generale ed usarla senza aggiungere nessun comportamento ``speciale''.
+
+\begin{haskellbox}{}
+instance Identity Monad where
+    return a = a
+  -- (>>=)  :: Identity a -> (a -> Identity b) -> Identity b
+    a >>= f = f a
+\end{haskellbox}
+
+Anche le \textbf{liste} si possono definire come monadi.
+\begin{haskellbox}{}
+instance [] Monad where
+    return x = [x]
+    xs >>= f = concat (map f xs)
+    -- xs >>= f = [y | x <- xs, y <- f x]
+\end{haskellbox}
+
+La logica è quella di prendere una lista, applicare ad ogni elemento una funzione che restituisce a sua volta una lista, e poi ``appiattire'' tutto (\code{>>=} è analogo alle list comprehension).
+
+\begin{gframe}{Valutatore generalizzato}
+    Possiamo quindi scrivere una versione generale del nostro valutatore che accetti qualsiasi monade:
+\begin{haskellbox}{}
+eval :: Monad m => Term -> m Int
+eval (Const a) = pure a
+eval (Div t u) = eval t >>= \a ->
+                 eval u >>= \b ->
+                 pure (a `div` b)
+\end{haskellbox}
+\end{gframe}
+
+\todo{finisci (slide 18+)}
+
+
+\href{https://www.adit.io/posts/2013-04-17-functors,_applicatives,_and_monads_in_pictures.html}{useful link !!}
+
 \section{TODO: monadi I/O ecc (15)}
 
 
