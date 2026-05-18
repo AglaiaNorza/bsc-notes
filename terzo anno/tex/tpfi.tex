@@ -41,26 +41,6 @@
     numbers=none                     
 }
 
-% for few lines of code
-\newtcblisting{snippet}{
-    enhanced,
-    colback=hsbg,
-    colframe=hspurple,                 
-    boxrule=0pt,                      
-    leftrule=3pt,                    
-    arc=0pt,                        
-    outer arc=0pt,
-    listing only,
-    listing options={style=haskellstyle},
-    left=8pt,                        
-    top=2pt,
-    bottom=2pt,
-    boxsep=0pt,
-    before skip=6pt,                
-    after skip=6pt
-}
-
-% for large amounts of code
 \newtcblisting{haskellbox}[1]{
     enhanced,
     skin=bicolor,
@@ -82,9 +62,15 @@
 }
 
 % for inline code
-
 \definecolor{inlinebg}{HTML}{F3F4F6}    
-\definecolor{inlinetext}{HTML}{24292E} 
+\definecolor{inlinetext}{HTML}{24292E}  
+
+% \newcommand{\code}[1]{%
+%   \begingroup
+%   \setlength{\fboxsep}{2pt}
+%   \colorbox{inlinebg}{\ttfamily\color{inlinetext}{\strut #1}}
+%   \endgroup
+% }
 
 \newtcbox{\code}{
     on line,                           
@@ -1558,6 +1544,19 @@ class Applicative m => Monad m where
 
 In questo modo, una funzione \code{f : a -> b} viene rimpiazzata da \code{f' : a -> M b}, in cui \code{M} \textbf{cattura gli effetti computazionali} di \code{f}.
 
+\begin{gframe}{Valutatore generalizzato}
+    Possiamo quindi scrivere una versione generale del nostro valutatore che accetti qualsiasi monade:
+\begin{haskellbox}{}
+eval :: Monad m => Term -> m Int
+eval (Const a) = pure a
+eval (Div t u) = eval t >>= \a ->
+                 eval u >>= \b ->
+                 pure (a `div` b)
+\end{haskellbox}
+\end{gframe}
+
+Segue un link utile per comprendere al meglio questi concetti: \href{https://www.adit.io/posts/2013-04-17-functors,_applicatives,_and_monads_in_pictures.html}{[qui]}
+
 \subsection{Alcune monadi note}
 
 \subsubsection{Monade identità}
@@ -1598,28 +1597,156 @@ instance Maybe Monad where
 \end{haskellbox}
 
 \subsection{Monade State Transformer}
+In un mondo imperativo, una variabile può cambiare valore nel tempo. In haskell, i dati sono immutabili. Per simulare uno ``stato'' che cambia, si usa una funzione che prende lo stato corrente e restituisce sia un risultato che un nuovo stato.
+
+Per definire una State Transformer ``manualmente'', servono:
+\begin{itemize}
+    \item uno stato - rappresenta l'informazione che evolve nel tempo (es. un contatore) - per esempio un intero
+        \subitem \code{type State = Int}.
+    \item uno State Transformer (ST) - un wrapper che racchiude la logica del cambiamento di stato. Per definirlo manualmente, si deve usare un costruttore fittizio \code{S} perché in Haskell non è possibile definire un sinonimo di tipo (\code{type}) come istanza di una classe:
+\begin{haskellbox}{}
+newtype ST a = S (State -> (a, State))
+\end{haskellbox}
+\end{itemize}
+
+A causa di questo costruttore, è utile definire un'operazione di \textbf{applicazione} (\code{app}) che rimuove l'etichetta \code{S} e applica la funzione interna allo stato fornito.
+
+\begin{haskellbox}{}
+app :: ST a -> State -> (a, State)
+app (S st) x = st x
+\end{haskellbox}
+
+Possiamo simulare effetti collaterali (come incrementare un contatore) definendo funzioni specifiche come \code{tick}. Tuttavia, senza l'uso delle monadi, dovremmo gestire manualmente il ``threading'' dello stato (passare il nuovo stato \code{s'} alla computazione successiva), rendendo il codice ripetitivo.
+
+\begin{haskellbox}{}
+-- "side effect" manuale
+tick :: ST Int -> ST Int
+tick (S st) = S (\s -> 
+    let (a, s') = st s -- esegue la computazione e ottiene il nuovo stato
+    in (a, s' + 1))    -- incrementa manualmente lo stato
+\end{haskellbox}
+
+Definendo \code{ST} come \textbf{monade}, l'operatore \code{>>=} si occupa di ``nascondere'' il passaggio dello stato aggiornato tra le funzioni.
+
+\begin{haskellbox}{}
+instance Monad ST where
+    -- return mette un valore in uno stato neutro
+    return x = S (\s -> (x, s)) 
+
+    -- (>>=) concatena le azioni e fa fluire lo stato s' automaticamente
+    st >>= f = S (\s -> 
+        let (x, s') = app st s 
+        in app (f x) s') 
+\end{haskellbox}
+
+In Haskell, le monadi sono strutturate secondo una gerarchia di classi. Una monade è, per definizione, un applicativo "potenziato". Pertanto, per definire \code{ST} come monade, dobbiamo obbligatoriamente istanziarla come applicativo, e di conseguenza anche come funtore.
+
+Infatti:
+\begin{enumerate}
+    \item Functor permette di usare \code{fmap} per trasformare il risultato di una computazione di stato;
+    \item Applicative permette di gestire computazioni indipendenti in sequenza e fornisce \code{pure};
+    \item Monad introduce l'operatore \code{>>=} (bind), permettendo a una computazione di dipendere dal risultato della precedente;
+\end{enumerate}
+
+\begin{haskellbox}{}
+instance Functor ST where
+    -- fmap :: (a -> b) -> ST a -> ST b
+    fmap f (S st) = S (\s -> 
+        let (x, s') = st s 
+        in (f x, s'))
+\end{haskellbox}
+
+\begin{haskellbox}{}
+instance Applicative ST where
+    pure x = S (\s -> (x, s))
+
+    -- (<*>) :: ST (a -> b) -> ST a -> ST b
+    stf <*> stx = S (\s ->
+        let (f, s')  = app stf s in
+        let (x, s'') = app stx s' in
+        (f x, s''))
+\end{haskellbox}
+
+\begin{gframe}{Flusso di stati e dati}
+Per comprendere come variano le operazioni, possiamo visualizzare il trasformatore di stato come una scatola nera con un ingresso (lo stato iniziale $s$) e due uscite (il valore prodotto $x$ e lo stato aggiornato $s'$).
+
+\begin{itemize}
+    \item \textbf{Pure}: il valore $x$ viene semplicemente "iniettato" nel sistema. Lo stato $s$ entra ed esce esattamente uguale, senza essere toccato - non c'è alcuna trasformazione, solo un trasporto di informazioni.
+    
+    \item \textbf{Funtore (fmap)}: lo stato $s$ entra nella scatola $st$ e produce un valore intermedio $x$ e uno stato $s'$. La funzione $g$ viene applicata solo al valore $x$, ottenendo $g(x)$. Lo stato $s'$ non viene alterato dalla funzione.
+
+    \item \textbf{Applicativo (\code{<*>})}: rappresenta il sequenziamento di due trasformazioni indipendenti;
+    \begin{enumerate}
+        \item lo stato iniziale $s$ entra nel primo blocco, che produce una funzione $f$ e uno stato intermedio $s'$
+        \item questo stato $s'$ viene passato come input al secondo blocco, che produce un valore $x$ e lo stato finale $s''$
+        \item solo alla fine la funzione $f$ e il valore $x$ vengono combinati
+    \end{enumerate}
+    Qui lo stato fluisce "in serie" tra le due scatole, ma la natura della seconda operazione non dipende dal risultato della prima.
+
+\item \textbf{Monade (\code{>>=})}: come nell'applicativo, lo stato fluisce in serie ($s \to s'$), ma il valore $x$ prodotto dalla prima scatola viene usato per scegliere o costruire la scatola successiva.
+\end{itemize}
+
+\end{gframe}
+
+\subsection{Do notation}
+La \textbf{do notation} è una sintassi alternativa (zucchero sintattico) per scrivere computazioni monadiche in modo leggibile, simulando uno stile imperativo. Ogni blocco \code{do} viene tradotto dal compilatore in una serie di applicazioni degli operatori \code{>>=} e \code{>>}.
+
+Sia $p$ un'azione (un'espressione di tipo \code{Monad m => m a}) e \code{stmts} una sequenza non vuota di comandi. Valgono le seguenti uguaglianze:
+\begin{itemize}
+    \item \textbf{azione singola:} un blocco \code{do} contenente una sola azione coincide con l'azione stessa.
+    \begin{haskellbox}{}
+do {p} = p
+    \end{haskellbox}
+
+    \item \textbf{sequenziamento:} se un'azione è seguita da altri comandi, viene usato l'operatore \code{>>}; il risultato della prima azione viene scartato.
+    \begin{haskellbox}{}
+do {p; stmts} = p >> do {stmts}
+    \end{haskellbox}
+
+    \item \textbf{binding:} il comando \code{x <- p} estrae il valore dal contesto monadico di $p$ e lo rende disponibile per i comandi successivi tramite una funzione lambda.
+    \begin{haskellbox}{}
+do {x <- p; stmts} = p >>= \x -> do {stmts}
+    \end{haskellbox}
+\end{itemize}
+
+\textbf{Nota bene:} un blocco \code{do} non può terminare con un comando di estrazione (\code{x <- p}), ma deve obbligatoriamente terminare con un'azione pura o monadica. Ad esempio, \code{do {x <- getChar}} non è un'espressione valida.
 
 
 \subsection{Monad Laws}
+Perché una struttura sia una monade valida, le operazioni \code{return} e \code{>>=} devono soddisfare tre leggi fondamentali:
 
-
-
-
-\begin{gframe}{Valutatore generalizzato}
-    Possiamo quindi scrivere una versione generale del nostro valutatore che accetti qualsiasi monade:
+\subsubsection*{Identità Destra}
+Applicare \code{return} dopo una computazione non deve alterarne il risultato. "Impacchettare" un valore appena estratto è un'operazione neutra.
 \begin{haskellbox}{}
-eval :: Monad m => Term -> m Int
-eval (Const a) = pure a
-eval (Div t u) = eval t >>= \a ->
-                 eval u >>= \b ->
-                 pure (a `div` b)
+-- notazione standard
+p >>= return = p
+
+-- do-notation
+do { x <- p; return x } = do { p }
 \end{haskellbox}
-\end{gframe}
 
-\todo{finisci (slide 18+)}
+\subsubsection*{Identità Sinistra}
+Se inseriamo un valore in un contesto monadico con \code{return} e lo passiamo a una funzione \code{f} tramite bind, il risultato deve essere identico all'applicazione diretta di \code{f} al valore.
+\begin{haskellbox}{}
+-- notazione standard
+return e >>= f = f e
 
+-- do-notation
+do { x <- return e; f x } = do { f e }
+\end{haskellbox}
 
-\href{https://www.adit.io/posts/2013-04-17-functors,_applicatives,_and_monads_in_pictures.html}{useful link !!}
+\subsubsection*{Associatività}
+L'ordine con cui concateniamo le operazioni non influenza il risultato finale. 
+
+Questa legge permette alla do-notation di comportarsi come una sequenza piatta di comandi.
+\begin{haskellbox}{}
+-- notazione standard
+((p >>= f) >>= g) = p >>= (\x -> (f x >>= g))
+
+-- do-notation
+do { y <- do { x <- p; f x }; g y } = do { x <- p; y <- f x; g y }
+\end{haskellbox}
+
 
 \section{TODO: monadi I/O ecc (15)}
 
