@@ -1485,8 +1485,8 @@ Per comprendere perché le monadi siano utili, consideriamo un valutatore di esp
 data Term = Const Int | Div Term Term
 
 eval :: Term -> Int
-eval (Const a)   = a
-eval (Div t u)   = eval t `div` eval u
+eval (Const a) = a
+eval (Div t u) = eval t `div` eval u
 \end{haskellbox}
 
 Questa implementazione è elegante ma fragile: un'espressione come \code{Div (Const 1) (Const 0)} farà crashare il programma.
@@ -1559,6 +1559,8 @@ class Applicative m => Monad m where
 In questo modo, una funzione \code{f : a -> b} viene rimpiazzata da \code{f' : a -> M b}, in cui \code{M} \textbf{cattura gli effetti computazionali} di \code{f}.
 
 \subsection{Alcune monadi note}
+
+\subsubsection{Monade identità}
 La \textbf{monade identità} è simile all'elemento neutro di un'algebra. Serve a rappresentare una computazione senza un effetto collaterale, e permette di definire una funzione generale ed usarla senza aggiungere nessun comportamento ``speciale''.
 
 \begin{haskellbox}{}
@@ -1568,6 +1570,7 @@ instance Identity Monad where
     a >>= f = f a
 \end{haskellbox}
 
+\subsubsection{Liste}
 Anche le \textbf{liste} si possono definire come monadi.
 \begin{haskellbox}{}
 instance [] Monad where
@@ -1577,6 +1580,30 @@ instance [] Monad where
 \end{haskellbox}
 
 La logica è quella di prendere una lista, applicare ad ogni elemento una funzione che restituisce a sua volta una lista, e poi ``appiattire'' tutto (\code{>>=} è analogo alle list comprehension).
+
+\subsubsection{Monade eccezione}
+Il tipo \code{Maybe} può essere trattato come una monade per gestire le eccezioni.
+
+L'operatore \code {>>=} si comporta in questo modo:
+\begin{itemize}
+    \item se il risultato precedente è \code{Nothing}, questo sarà propagato
+    \item se è \code{Just x}, \code{x} viene spacchettato e passato alla funzione successiva
+\end{itemize}
+
+\begin{haskellbox}{}
+instance Maybe Monad where
+    return x = Just x
+    Nothing >>= _ = Nothing
+    (Just x) >>= f = f x
+\end{haskellbox}
+
+\subsection{Monade State Transformer}
+
+
+\subsection{Monad Laws}
+
+
+
 
 \begin{gframe}{Valutatore generalizzato}
     Possiamo quindi scrivere una versione generale del nostro valutatore che accetti qualsiasi monade:
