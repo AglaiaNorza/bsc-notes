@@ -1461,7 +1461,7 @@ Come i funtori, anche gli applicatori hanno una serie di regole da rispettare:
 \end{itemize}
 \end{enumerate}
 
-\section{Monadi}
+\section{Monadi Base}
 Le monadi rappresentano il passo successivo rispetto agli applicativi per la gestione controllata di \textbf{side-effects}. Se un applicativo permette di combinare calcoli indipendenti, la monade permette di gestire calcoli in cui il passo successivo \textbf{dipende} dal risultato di quello precedente.
 
 \subsection{Introduzione}
@@ -1712,6 +1712,68 @@ do {x <- p; stmts} = p >>= \x -> do {stmts}
 \textbf{Nota bene:} un blocco \code{do} non può terminare con un comando di estrazione (\code{x <- p}), ma deve obbligatoriamente terminare con un'azione pura o monadica. Ad esempio, \code{do {x <- getChar}} non è un'espressione valida.
 
 
+\subsubsection{Esempio Pratico: Tree Relabeling}
+Per comprendere meglio il funzionamento pratico della monade \code{ST}, analizziamo il problema del Relabeling di un albero binario. L'obiettivo è prendere un albero ed etichettare ogni sua foglia progressivamente con un numero intero.
+
+Definiamo il tipo di dato per l'albero: i dati risiedono nelle foglie (\code{F}), mentre i nodi di ramificazione (\code{R}) servono solo a biforcare la struttura:
+\begin{haskellbox}{}
+data Tree a = F a | R (Tree a) (Tree a)
+\end{haskellbox}
+
+Per generare gli indici progressivi, definiamo un'azione nello stato chiamata \code{fresh}, il cui scopo è leggere il contatore corrente e incrementarlo:
+\begin{haskellbox}{}
+fresh :: ST Int
+fresh = S (\n -> (n, n + 1))
+\end{haskellbox}
+
+\begin{gframe}{Come funziona ST?}
+Ricordando che il tipo \code{ST a} racchiude una funzione di transizione \code{State -> (a, State)}, quando viene invocata l'azione \code{fresh} accade questo:
+\begin{itemize}
+    \item la funzione accetta lo stato corrente \code{n} (l'intero che fa da contatore);
+    \item restituisce la coppia \code{(valore\_prodotto, nuovo\_stato)}
+        \subitem (che nello specifico è \code{(n, n + 1)})
+    \item il valore prodotto \code{n} rappresenta il contatore prima dell'incremento, che verrà estratto ed assegnato alla foglia corrente;
+    \item il \code{nuovo\_stato} (\code{n + 1}) non viene memorizzato nella variabile estratta, ma viene preso da Haskell per essere passato implicitamente alla riga di codice successiva;
+\end{itemize}
+   
+\end{gframe}
+
+Sfruttando la \code{do} notation, l'algoritmo di rietichettatura si scrive in modo sequenziale, mimando la sintassi di un linguaggio imperativo:
+\begin{haskellbox}{}
+mlabel :: Tree a -> ST (Tree Int)
+mlabel (F _) = do 
+  n <- fresh
+  return (F n)
+
+mlabel (R l r) = do 
+  l' <- mlabel l
+  r' <- mlabel r
+  return (R l' r')
+\end{haskellbox}
+
+\begin{gframe}{Do notation}
+Il compilatore Haskell converte il blocco \code{do} rimuovendo lo zucchero sintattico e traducendolo nell'operatore \code{>>=}:
+
+\begin{haskellbox}{}
+mlabel (F _) = fresh >>= \n -> return (F n)
+\end{haskellbox}
+
+Se sostituiamo l'operatore \code{>>=} con la sua definizione formale implementata per la monade \code{ST}, l'espressione diventa:
+\begin{haskellbox}{}
+mlabel (F _) = S (\s -> 
+    let (n, s') = app fresh s 
+    in app (return (F n)) s')
+\end{haskellbox}
+
+Quindi la computazione procede così:
+\begin{enumerate}
+    \item la computazione \code{fresh} viene spacchettata tramite \code{app} e applicata allo stato iniziale \code{s}; produce il valore di contatore corrente \code{n} (pari a \code{s}) e lo stato incrementato \code{s'} (pari a \code{s + 1}).
+    \item l'operatore \code{>>=} cattura questa tupla, estrae il valore \code{n} e lo passa come argomento alla funzione lambda \code{\textbackslash n -> ...}.
+    \item all'interno della lambda viene chiamato \code{return (F n)}; questa funzione prende la foglia \code{F n} e la inserisce in un nuovo costruttore \code{S} che non tocca lo stato, applicando l'azione sul residuo dello stato \code{s'};
+    \item lo stato globale aggiornato \code{s'} fluisce così verso l'esterno, pronto per essere ereditato e ulteriormente modificato dalle successive chiamate ricorsive sui rami dell'albero;
+\end{enumerate}
+\end{gframe}
+
 \subsection{Monad Laws}
 Perché una struttura sia una monade valida, le operazioni \code{return} e \code{>>=} devono soddisfare tre leggi fondamentali:
 
@@ -1747,9 +1809,174 @@ Questa legge permette alla do-notation di comportarsi come una sequenza piatta d
 do { y <- do { x <- p; f x }; g y } = do { x <- p; y <- f x; g y }
 \end{haskellbox}
 
+\section{Input/Output}
+I programmi interattivi sono un problema nel mondo funzionale, perché il valore di una funzione pura dipende solo dai suoi argomenti, mentre input e output sono effettivamente solo dei \textbf{side-effects} (per esempio, se una funzione legge un carattere da tastiera, chiamandola due volte consecutive potremmo ottenere due caratteri diversi anche se non le abbiamo passato alcun argomento diverso).
 
-\section{TODO: monadi I/O ecc (15)}
+Per risolvere questo paradosso senza rinunciare alla purezza, Haskell adotta l'idea per cui esiste un argomento implicito che rappresenta lo \textit{stato del mondo}.
+
+Si utilizza quindi una Monade e le espressioni del tipo IO sono dette \textbf{actions}:
+\begin{haskellbox}{}
+-- I/O vista come una funzione che 'trasforma il mondo'
+type IO = World -> World
+    
+-- in realtà, un'azione IO restituisce anche un valore:
+type IO = World -> (a, World)
+\end{haskellbox}
+
+La definizione del tipo IO è nascosta al programmatore, in modo da impedirgli di manipolare direttamente \code{World}.
+
+\subsection{Azioni base}
+\code{IO Char} rappresenta quindi il tipo delle azioni che ritornano un carattere, e \code{IO ()} quelle che ritornano la tupla vuota (simile a \code{void}), cioè le azioni che sono solo side-effects.
+
+Le primitive di base sono:
+
+\begin{haskellbox}{}
+-- per leggere un carattere da tastiera
+getChar :: IO Char
+
+-- per scrivere un carattere da tastiera
+putChar :: Char -> IO ()
+
+-- per fornire un valore alle azioni 
+-- (utile per esempio nei casi base della ricorsione)
+return :: a -> IO a
+\end{haskellbox}
+
+Se vogliamo sequenzializzare azioni di IO, utilizziamo gli operatori della monade:
+\begin{itemize}
+    \item se il valore restituito da un'azione non ci interessa (es. \code{putChar}), usiamo \code{>>}
+    \item se il valore ci interessa, usiamo \code{>>=} o la \code{do} notation
+\end{itemize}
+
+\begin{gframe}{Esempi: scrivere una stringa a video e leggere una riga}
+\begin{haskellbox}{}
+putStrLn :: String -> IO ()
+putStrLn xs = foldr (>>) done (map putChar xs) >> putChar '\n'
+\end{haskellbox}
+\begin{itemize}
+    \item \code{map putChar xs} trasforma una stringa in una lista di azioni \code{IO ()}
+    \item \code{foldr (>>)} le concatena in un'unica azione sequenziale, che termina con la stampa del carattere \code{\textbackslash n}
+    \item \code{done} corrisponde a \code{return ()}
+\end{itemize}   
+
+Sequenziare \code{getChar} è più complicato, perché ci interessa il valore ritornato (il carattere letto).
+
+\begin{haskellbox}{}
+getLine = getChar >>= \x ->
+            if x == '\n' then return []
+            else getLine >>= \xs ->
+                return (x:xs)
+\end{haskellbox}
+\begin{itemize}
+    \item \code{getChar} legge un carattere, che viene passato (sequenzialmente da \code{>>=}) alla funzione lambda che controlla se il carattere letto è il newline - se sì, termina la lettura; altrimenti, richiama la funzione ricorsivamente e ritorna il primo carattere letto concatenato al risultato della chiamata
+\end{itemize}
+
+\begin{itemize}
+    \item \code{getChar} legge un carattere; il suo viene passato tramit \code{>>=} come argomento \code{x} alla prima funzione lambda;
+    \item se \code{x} corrisponde al carattere di newline, la lettura termina e viene restituita una lista vuota \code{[]} inserita nel contesto monadico tramite \code{return};
+    \item altrimenti, \code{getLine} viene chiamata ricorsivamente per leggere i caratteri rimanenti. Il secondo operatore \code{>>=} estrae la stringa parziale risultante da questa chiamata, legandola alla variabile \code{xs}, e infinre \code{return (x:xs)} ricompone sequenzialmente la stringa completa posizionando il carattere iniziale in testa alla lista;
+\end{itemize}
+\end{gframe}
+
+\subsection{Strictness dell'I/O}
+
+Anche con le operazioni IO si può usare la \code{do} notation.
+\begin{haskellbox}{}
+do
+  v1 <- a1
+  v2 <- a2
+  return (f v1 v2)
+\end{haskellbox}
+
+La funzione \code{return} è ``a senso unico'': permette di inserire un valore puro in un contesto IO, ma non esiste una funzione simmetrica \code{runIO :: Io a -> a} che permetta di estrarre il valore puro dalla monade.
+
+Se esistesse, si potrebbe scrivere codice come:
+\begin{haskellbox}{}
+minus :: Int
+minus = x - y 
+  where
+    x = runIO readInt
+    y = runIO readInt
+\end{haskellbox}
+
+Questo programma sarebbe problematico perché violerebbe il \textbf{Teorema di Church-Rosser} (o di confluenza) che vale per i linguaggi funzionali puri. Il teorema garantisce che l'ordine con cui il compilatore decide di valutare le sotto-espressioni non influenzi mai il risultato finale.
+
+Se dobbiamo calcolare \code{minus x - y}, in una funzione pura il compilatore può calcolare \code{x} e \code{y} nell'ordine in cui preferisce (il risultato sarà identico).
+
+Se invece esistesse \code{runIO}, \code{readInt} chiederebbe all'utente di digitare due numeri. Il compilatore potrebbe decidere di valutare prima \code{x}, e si otterrebbe \code{5 - 3}, oppure prima \code{y}, ottenendo \code{3 - 5}. Lo stesso programma produrrebbe risultati diversi solo a causa dell'ordine di ottimizzazione interna del compilatore. Poiché l'I/O è effectful, l'ordine di lettura è fondamentale.
+
+Per questo, la valutazione nella monade IO è \textbf{strict}.
+
+Per esempio,
+\begin{haskellbox}{}
+do { undefined; return 3 }
+\end{haskellbox}
+valuta a \code{undefined} e non a \code{3}, anche se \code{return 3} non avrebbe bisogno dell'eventuale valore calcolato dalla funzione precedente.
+
+\section{State Thread Monad}
+Gli algoritmi funzionali puri sulle liste sono eleganti, ma non sempre efficienti. Sebbene molti mantengano la stessa complessità asintotica temporale dei programmi iterativi, la ricorsione introduce un overhead di spazio dovuto ai record di attivazione nello stack. Inoltre, alcune strutture dati sono impossibili da realizzare in modo efficiente senza memoria mutabile: per esempio, le hash table e i dizionari richiedono accesso diretto e modifica in-place degli array.
+
+Per risolvere questo problema, il modulo \code{Control.Monad.ST} fornisce una monade che permette di modificare la memoria in maniera simile ad un linguaggio imperativo.
+
+La struttura di \code{Control.Monad.ST} è analoga a quella della monade State Transformer. Tuttavia, gli elementi della variabile di tipo \code{s} non sono accessibili (come nel caso di \code{World}), se non attraverso le operazioni definite.
+
+\begin{haskellbox}{}
+type ST s a = s -> (a, s)
+\end{haskellbox}
+\begin{itemize}
+    \item \code{s} rappresenta quindi una specie di etichetta che identifica un thread di esecuzione (e non si possono trasmettere valori da un thread ad un altro)
+\end{itemize}
+
+All'interno di un thread \code{s} si possono creare delle vere e proprie variabili mutabili, chiamate \code{STRef s a} (refeerence a un valore di tipo \code{a} dentro il thread \code{s}).
+
+Le tre primitive esposte da haskell per lavorare su una variabile \code{STRef} sono:
+\begin{itemize}
+    \item \code{newSTRef:: a -> ST s (STRef s a)}
+        \subitem crea una nuova variabile mutabile, la inizializza con un valore puro e restituisce il suo riferimento
+    \item \code{readSTRef :: STRef s a -> ST s a}
+        \subitem legge il valore memorizzato nella variabile
+    \item \code{writeSTRef :: STRef s a -> a -> ST s ()}
+        \subitem sovrascrive il contenuto della variabile (restituisce \code{()} perché serve solo il suo side-effect)
+\end{itemize}
+
+\begin{gframe}{Esempio: Fibonacci}
+Tramite tupling si può ottenere un Fibonacci lineare, ma che, essendo ricorsivo, occupa $\Theta(n)$ in termini di spazio.
+
+Tramite la monade \code{STRef}, si può ottenere una complessità spaziale di $\Theta(1)$
+
+\begin{haskellbox}{}
+-- repeatFor simula un ciclo
+repeatFor n = foldr (>>) done . replicate n
+
+fibST :: Int -> ST s Integer
+fibST n = do
+  a <- newSTRef 0
+  b <- newSTRef 1
+  repeatFor n (do 
+    x <- readSTRef a
+    y <- readSTRef b
+    writeSTRef a y
+    writeSTRef b $! (x + y))
+  readSTRef a
+\end{haskellbox}
+
+\begin{itemize}
+    \item \code{a} e \code{b} vengono allocate ed inizializzate a \code{0} e \code{1}
+    \item il blocco interno a \code{repeatFor} viene eseguito $n$ volte; ad ogni iterazione:
+        \begin{itemize}
+            \item si leggono i valori di \code{a} e \code{b}
+            \item si aggiorna il valore di \code{a} con \code{y} e quello di \code{b} con la somma (calcolata in modo strict con \code{\$!}, che forza la valutazione immediata) \code{\$! (x+y)}
+            \item alla fine del ciclo, si legge e restituisce il valore accumulato in \code{a}
+        \end{itemize}
+\end{itemize}
+
+Il valore ritornato è però di tipo \code{ST s Integer}. Bisogna quindi estrarre un intero puro.
+
+\end{gframe}
+\todo{finire !}
+
 
 
 
 \end{document}
+
