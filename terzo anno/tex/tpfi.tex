@@ -1417,7 +1417,7 @@ Se eseguiamo quindi \code{pure (*) <*> [1,2] <*> [3,4]}:
         \subitem si ottiene quindi \code{1*3, 1*4, 2*3, 2*4} $\to$ \code{[3, 4, 5, 6]}
 \end{itemize}
 
-A volte si vuole però che le liste si comportino come \code{zipWith} - per questo, haskell introduce \code{ZipList}
+A volte si vuole però che le liste si comportino come \code{zipWith} - per questo, Haskell introduce \code{ZipList}
 
 \begin{haskellbox}{}
  -- per poter definire un'altra istanza di Applicative senza conflitti
@@ -1597,7 +1597,7 @@ instance Maybe Monad where
 \end{haskellbox}
 
 \subsection{Monade State Transformer}
-In un mondo imperativo, una variabile può cambiare valore nel tempo. In haskell, i dati sono immutabili. Per simulare uno ``stato'' che cambia, si usa una funzione che prende lo stato corrente e restituisce sia un risultato che un nuovo stato.
+In un mondo imperativo, una variabile può cambiare valore nel tempo. In Haskell,  i dati sono immutabili. Per simulare uno ``stato'' che cambia, si usa una funzione che prende lo stato corrente e restituisce sia un risultato che un nuovo stato.
 
 Per definire una State Transformer ``manualmente'', servono:
 \begin{itemize}
@@ -1929,7 +1929,7 @@ type ST s a = s -> (a, s)
 
 All'interno di un thread \code{s} si possono creare delle vere e proprie variabili mutabili, chiamate \code{STRef s a} (refeerence a un valore di tipo \code{a} dentro il thread \code{s}).
 
-Le tre primitive esposte da haskell per lavorare su una variabile \code{STRef} sono:
+Le tre primitive esposte da Haskell per lavorare su una variabile \code{STRef} sono:
 \begin{itemize}
     \item \code{newSTRef:: a -> ST s (STRef s a)}
         \subitem crea una nuova variabile mutabile, la inizializza con un valore puro e restituisce il suo riferimento
@@ -1969,14 +1969,41 @@ fibST n = do
             \item alla fine del ciclo, si legge e restituisce il valore accumulato in \code{a}
         \end{itemize}
 \end{itemize}
-
+\end{gframe}
 Il valore ritornato è però di tipo \code{ST s Integer}. Bisogna quindi estrarre un intero puro.
 
-\end{gframe}
-\todo{finire !}
+Serve quindi una funzione \code{runST} analoga a \code{runState} per gli State Transformer.
+
+Questa funzione esiste, ma ha un tipo che non appartiene ai tipi ``standard'' di Haskell (à la Hindley Milner) - contiene infatti un $\forall$ all'interno del tipo invece che all'inizio (apparterrebbe quindi ai tipi del Lambda Calcolo Polimorfo / F2 (vedi \href{https://raw.githubusercontent.com/AglaiaNorza/notes-ig/main/terzo%20anno/linguaggi%20di%20programmazione.pdf}{\underline{appunti del corso ``Linguaggi di programmazione''}})):
+
+\begin{haskellbox}{}
+runST :: (forall s. ST s a) -> a
+\end{haskellbox}
+
+Un tipo di questo genere si dice \textbf{rank 2} (mentre i tipi di Haskell sono rank 1).
+
+Lo stato deve essere inaccessibile e quindi espressioni come 
+\begin{haskellbox}{}
+let v = runST (newSTRef True) in runST (readSTRef v)
+\end{haskellbox}
+non ben tipate. Il type checker non può unificare \code{STRef s a} con un tipo che dipende da \code{s}, quindi non è possibile leggere un valore da un thread e trasportarlo in un altro.
+
+Per estrarre un valore, basta quindi scrivere qualcosa come \code{fib n = runST (fibST n)}.
+
+\subsubsection{Array mutabili}
+Un array in Haskell ha tipo \code{STArray s i e}, dove \code{s} è il thread a cui appartiene, \code{i} è il tipo dell'indice, ed \code{e} il tipo dei valori contenuti.
+
+Il tipo \code{i} deve essere istanza della classe \code{i} che contiene tipi enumerabili (con operazioni di \code{succ}) come \code{Int}, \code{Char} ecc.
+
+I metodi fondamentali su \code{STArray} sono:
+\begin{itemize}
+    \item \code{newListArray (min, max) lista} - inizializza un array mutabile specificando l'intervallo degli indici e inserendo gli elementi di una lista iniziale
+    \item \code{readArray xa indice} - legge e restituisce il valore all'indice specificato
+    \item{writeArray xa indice valore} - modifica il contenuto di \code{xa} sovrascrivendo il valore all'indice dato con \code{valore} (non ritorna nulla)
+    \item{getElems xa} - prende gli elementi dall'array e li copia ``all'indietro'' in una lista haskell
+\end{itemize}
 
 
 
 
 \end{document}
-
