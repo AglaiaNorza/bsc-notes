@@ -1775,6 +1775,7 @@ Quindi la computazione procede così:
 \end{gframe}
 
 \subsection{Monad Laws}
+\label{monad_laws}
 Perché una struttura sia una monade valida, le operazioni \code{return} e \code{>>=} devono soddisfare tre leggi fondamentali:
 
 \subsubsection*{Identità Destra}
@@ -2126,19 +2127,120 @@ f <*> x = f >>= \g -> x >>= \y -> return (g y)
 \end{haskellbox}
 Questo meccanismo estrae sequenzialmente la funzione pura \code{g} e il valore puro \code{y} dai rispettivi contesti monadici, applica la funzione e ne impacchetta nuovamente il risultato. Ciò dimostra formalmente che \textbf{\code{Monad} è un sottotipo di \code{Applicative}}, il quale a sua volta è un \textbf{sottotipo di \code{Functor}}.
 
-\subsection{Formulazione alternativa: \code{join}}
-Nella teoria delle categorie, una monade può essere definita in modo alternativo utilizzando la funzione \code{join}, il cui scopo è il \textit{flattening} di due livelli di computazione nidificati:
+\section{Funzione \code{join}}
+Quando si lavora con le monadi, capita spesso di ottenere contesti duplicati o stratificati (e.g. lista di liste o \code{Maybe (Maybe a)}). La funzione \code{join} permette di appiattire un'applicazione annidata di un tipo monadico:
 \begin{haskellbox}{}
 join :: Monad m => m (m a) -> m a
+join mmx = do
+  mx <- mmx
+  x  <- mx
+  return x
 \end{haskellbox}
+\begin{itemize}
+    \item \code{mx <- mmx} estrae la monade interna \code{mx} rimuovendo il primo stato monadico
+    \item \code{x <- mx} estrae il valore puro dalla monade interna
+    \item \code{return x} prende il valore puro e lo inserisce nuovamente nel contesto
+\end{itemize}
 
-La funzione \code{join} è completamente \textbf{interdefinibile} con l'operatore di bind (\code{>>=}) secondo le seguenti relazioni:
+oppure semplicemente:
 \begin{haskellbox}{}
-join x   = x >>= id
-p >>= f  = join ((fmap f) p)
+join :: Monad m => m (m a) -> m a
+join mmx = do
+  mx <- mmx
+  mx
 \end{haskellbox}
-L'operazione di bind può quindi essere vista come la combinazione sequenziale di una mappatura funzionale (\code{fmap}) seguita da un appiattimento strutturale (\code{join}).
+(infatti si ha che \code{do \{ x <- mx; return x \}} è equivalente a \code{mx} (prima Monad Law, p.\pageref{monad_laws}))
 
-\section{TODO: Generic Programming}
+\subsection{Definizione di bind tramite join}
+    Nella Teoria delle Categorie, una monade non è definita tramite bind, ma è descritta come un funtore equipaggiato con due trasformazioni: un'unità (\code{return}) e una moltiplicazione (\code{join}). 
+
+In Haskell, possiamo ricavare il legame tra i due approcci scrivendo il bind in questo modo:
+\begin{haskellbox}{}
+m >>= f = join (fmap f m)
+\end{haskellbox}
+
+Essenzialmente, fare un bind significa applicare una funzione che genera una struttura annidata \\
+(\code{fmap f m} produce \code{m (m b)}), e poi usare un \code{join} per ``appiattire'' il risultato.
+
+Anche le Monad Laws possono quindi essere ridefinite con \code{join} e \code{fmap}:
+
+\begin{haskellbox}{}
+join . return = id
+\end{haskellbox}
+\begin{itemize}
+    \item se inseriamo un elemento in un contesto tramite return e poi uniamo i contesti con join, l'effetto si annulla
+\end{itemize}
+
+\begin{haskellbox}{}
+join . fmap return = id
+\end{haskellbox}
+
+\begin{itemize}
+    \item se prendiamo una monade, mappiamo \code{return} al suo interno (creando una struttura sdoppiata) e poi applichiamo \code{join}, torniamo alla monade di partenza
+\end{itemize}
+
+\begin{haskellbox}{}
+join . join = join . fmap join
+\end{haskellbox}
+\begin{itemize}
+    \item se abbiamo tre livelli di monade annidati \code{(m (m (m a)))}, non importa se decidiamo di "schiacciare" prima i due livelli più interni o i due livelli più esterni: il risultato finale sarà identico
+\end{itemize}
+
+\section{Generic Programming}
+Le classi in Haskell permettono forme di programmazione generica basata sul fatto che:
+\begin{itemize}
+    \item gli operatori hanno lo stesso nome (overloading) (modificano il loro comportamento in base all'istanza specifica)
+    \item ogni classe di tipi rispetta leggi matematiche precisi (es. Monad Laws); in questo modo, il comportamento del codice generico è prevedibile e corretto
+\end{itemize}
+
+Il generic programming in Haskell fonde il polimorfismo parametrico (funzioni che lavorano con tipi generici) con il polimorfismo ad-hoc (fornito dalle type classes). Si può scrivere un algoritmo una sola volta ed applicarlo a qualsiasi tipo che implementi l'interfaccia richiesta.
+
+\subsection{\code{mapM} e \code{filterM}}
+Un esempio è la funzione \code{mapM}, una generalizzazione monadica di \code{map} (\code{map} applica una funzione pura \code{a -> b} agli elementi di una lista, mentre \code{mapM} applica una funzione che genera un tipo monadico \code{a -> m b}).
+
+\begin{haskellbox}{}
+mapM :: Monad m => (a -> m b) -> [a] -> m [b]
+mapM f []     = return [] -- "impacchettamento"
+mapM f (x:xs) = do y <- f x
+                       ys <- mapM f xs
+                       return (y:ys)
+\end{haskellbox}
+
+Questa funzione consente quindi di gestire facilmente side-effects nella computazione.
+
+In maniera analoga, la funzione \code{filterM} generalizza \code{filter}.
+
+\code{filter} prende un predicato puro \code{a -> Bool} e una lista \code{[a]}, e restituisce solo gli elementi che soddisfano il predicato. La controparte monadica \code{filterM} accetta un predicato che genera side-effect (monadici):
+
+\begin{haskellbox}{}
+filterM :: Monad m => (a -> m Bool) -> [a] -> m [a]
+filterM p []     = return []
+filterM p (x:xs) = do b  <- p x
+                      ys <- filterM p xs
+                      return (if b then x:ys else ys)
+\end{haskellbox}
+
+\begin{gframe}{Powerset tramite non-determinismo}
+    Si possono sfruttare \code{filterM} e il non-determinismo delle liste di Haskell per fornire un'implementazione molto elegante della generazione di powerset:
+    \begin{haskellbox}{}
+filterM (\x -> [True, False]) [1, 2, 3]
+-- si ottiene [[1,2,3], [1,2], [1,3], [1], [2,3], [2], [3], []]
+    \end{haskellbox}
+    Infatti, quando si usa la monade lista, ogni operazione di bind effettua un prodotto cartesiano di tutte le possibilità. Il predicato \code{\textbackslash x -> [True, False]} dice essenzialmente, dato un \code{x}, di considerare in modo non-deterministico sia il caso in cui il predicato sia t\code{True} che quello in cui sia \code{False}.
+
+    Quindi:
+    \begin{itemize}
+        \item per il numero \code{1}, la monade si ``sdoppia'': in un ramo di esecuzione, \code{1} viene tenuto, e nell'altro viene scartato
+        \item per \code{2}, ciascuno dei rami preccedenti si sdoppia nuovamente
+        \item e la stessa cosa avviene per \code{3}
+    \end{itemize}
+
+    Alla fine della computazione la monade avrà esplorato l'intero albero delle decisioni combinatorie, e restituirà l'unione di tutti i cammini possibili (ovvero tutte le combinazioni di elementi, il powerset !).
+
+\end{gframe}
+
+
+
+
 
 \end{document}
