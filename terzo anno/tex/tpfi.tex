@@ -1563,7 +1563,7 @@ Segue un link utile per comprendere al meglio questi concetti: \href{https://www
 La \textbf{monade identità} è simile all'elemento neutro di un'algebra. Serve a rappresentare una computazione senza un effetto collaterale, e permette di definire una funzione generale ed usarla senza aggiungere nessun comportamento ``speciale''.
 
 \begin{haskellbox}{}
-instance Identity Monad where
+instance Monad Identity where
     return a = a
   -- (>>=)  :: Identity a -> (a -> Identity b) -> Identity b
     a >>= f = f a
@@ -1572,7 +1572,7 @@ instance Identity Monad where
 \subsubsection{Liste}
 Anche le \textbf{liste} si possono definire come monadi.
 \begin{haskellbox}{}
-instance [] Monad where
+instance Monad [] where
     return x = [x]
     xs >>= f = concat (map f xs)
     -- xs >>= f = [y | x <- xs, y <- f x]
@@ -1590,7 +1590,7 @@ L'operatore \code {>>=} si comporta in questo modo:
 \end{itemize}
 
 \begin{haskellbox}{}
-instance Maybe Monad where
+instance Monad Maybe where
     return x = Just x
     Nothing >>= _ = Nothing
     (Just x) >>= f = f x
@@ -2071,6 +2071,7 @@ Possiamo quindi scrivere più elegantemente:
 Esprimendo \code{>>=} in termini di \code{>=>}, le Monad Laws diventano più ``eleganti''.
 
 \begin{defframe}{Monoide}{}
+    \label{monoid}
 In matematica, un \textbf{monoide} è una struttura algebrica elementare composta da:
 \begin{itemize}
     \item un insieme di elementi
@@ -2239,8 +2240,149 @@ filterM (\x -> [True, False]) [1, 2, 3]
 
 \end{gframe}
 
+\section{Monoidi, Foldable e Traversable}
 
+\subsection{\code{Monoid}}
+Un \textbf{monoide} è una struttura algebrica dotata di un'operazione associativa e un'identità (vedi p.\pageref{monoid}).
 
+In Haskell, la classe \code{Monoid} è definita in questo modo:
+\begin{haskellbox}{}
+class Monoid a where
+    mempty  :: a               -- identità
+    mappend :: a -> a -> a     -- scritto anche <>
+    mconcat :: [a] -> a
+    mconcat = foldr mappend mempty
+\end{haskellbox}
+
+Le operazioni devono aderire a queste leggi:
+\begin{itemize}
+    \item \code{mempty <> x = x}
+    \item \code{x <> mempty = x}
+    \item \code{x <> (y <> z) = (x <> y) <> z}
+\end{itemize}
+
+L'esempio classico di monoide è quello delle liste con \code{[]} e \code{++}.
+
+\begin{haskellbox}{}
+instance Monoid [a] where
+    mempty = []
+    mappend = (++)
+\end{haskellbox}
+
+Anche \code{Maybe} si può definire come monoide:
+\begin{haskellbox}{}
+instance Monoid a => Monoid (Maybe a) where
+    mempty = Nothing
+    Noting `mappend` my = my
+    mx `mappend`` Nothing = mx
+    (Just x) `mappend` (Just y) = Just(x `mappend` y)
+\end{haskellbox}
+\begin{itemize}
+    \item notiamo che questo approccio si comporta nel modo opposto rispetto a \code{mapM}! qui, si propagano i \code{Just}, non i \code{Maybe} (si ``ripuliscono'' le strutture dati)
+\end{itemize}
+
+\subsubsection{Wrapper Types}
+Alcuni tipi possono essere \textbf{monoidi rispetto a più operazioni} (e.g. gli interi sono monoidi per somma e prodotto). 
+
+Dato che Haskell vieta di definire due istanze diverse della stessa classe per lo stesso tipo, si usano i \textbf{wrapper types}, definiti tramite \code{newtype}.
+
+Per esempio, per i booleani, si possono definire i due monoidi \code{All} per l'operazione di AND e \code{Any} per l'operazione di OR.
+\begin{haskellbox}{}
+newtype All = All Bool
+getAll (All b) = b
+
+instance Monoid All where
+    mempty = All True
+    (All b) `mappend` (All c) = All (b && c)
+
+newtype Any = Any Bool
+getAll (Any b) = b
+
+instance Monoid Any where
+    mempty = Any True
+    (Any b) `mappend` (Any c) = Any (b || c)
+\end{haskellbox}
+
+\subsection{\code{Foldable}}
+La classe \code{Foldable} raccoglie tutte le strutture dati i cui elementi possono essere ``ridotti'' o accumulati fino ad ottenere un singolo valore. Se gli elementi all'interno della struttura sono dei monoidi, l'accumulazione viene fatta in modo ``automatico'' tramite \code{mempty} e \code{mappend}.
+
+La sua interfaccia è:
+\begin{haskellbox}{}
+class Foldable t where
+    fold    :: Monoid a => t a -> a
+    foldMap :: Monoid b => (a -> b) -> t a -> b
+    foldr   :: (a -> b -> b) -> b -> t a -> b
+    foldl   :: (b -> a -> b) -> b -> t a -> b
+\end{haskellbox}
+\begin{itemize}
+    \item \code{fold} prende una struttura di monoidi e li ``schiaccia''
+        \begin{haskellbox}{}
+-- esempio: liste
+fold [] = mempty
+fold (x:xs) = x `mappend` fold xs
+\end{haskellbox}
+
+    \item \code{foldMap} prende una funzione trasformatrice che mappa gli elementi della struttura in un monoide, e poi effettua il \code{fold}
+    \item \code{foldr} e \code{foldl} non necessitano che \code{a} o \code{b} sia un monoide, perché viene fornita direttamente la funzione di composizione
+\end{itemize}
+
+Molte delle funzioni dei foldable sono interdefinibili (per esempio, \code{fold} si può definire come \code{foldMap id}). Quindi, quando si implementa un'istanza di \code{Foldable}, basta implementare una delle due tra \code{foldr} e \code{foldMap}, e il compilatore deriverà tutte le altre funzioni della classe.
+
+Inoltre, tutti i foldable sono riducibili ad una lista tramite
+\begin{haskellbox}{}
+toList = foldMap (:[])
+\end{haskellbox}
+
+\subsection{\code{Traversable}}
+\code{Traversable} è un'evoluzione del concetto di \code{Functor} (mappa una funzione su una struttura) - e una generalizzazione di \code{map} - che permette di gestire computazioni con side-effects.
+
+\begin{haskellbox}{}
+class (Functor t, Foldable t) => Traversable t where
+    traverse :: Applicative f => (a -> f b) -> t a -> f (t b)
+\end{haskellbox}
+\begin{itemize}
+    \item la funzione \code{traverse} attraversa la struttura \code{t a}, applica ad ogni elemento la funzione (con side-effects) \code{a -> fb}, ed estrae l'effetto accumulato ``portandolo fuori'' dalla struttura (da \code{a -> f b} e \code{t a} si passa a \code{f (t b)})
+
+        \begin{haskellbox}{}
+traverse g [] = pure []
+traverse g (x:xs) = pure (:) <*> g x <*> traverse g xs
+
+-- esempio:
+pred n = if n > 0 then Just (n-1) else Nothing
+
+> traverse pred [1,2,3]
+Just [0,1,2]
+-- ^ vediamo che ``porta fuori'' l'effetto
+-- (una map darebbe [Just 0, Just 1, Just 2])
+> traverse pred [2,1,0]
+Nothing -- il Nothing causato da 0 si propaga
+        \end{haskellbox}
+\end{itemize}
+
+\begin{gframe}{Alberi come traversable}
+    \begin{haskellbox}{}
+instance Traversable Tree where
+traverse g (Leaf x) = pure Leaf <*> g x
+traverse g (Node l r) = pure Node <*> traverse g l <*> traverse g r
+\end{haskellbox}
+
+\code{pure Leaf <*> g x}
+\begin{itemize}
+    \item \code{Leaf} ha tipo \code{b -> Tree b}
+    \item \code{g} ha tipo \code{a -> f b}
+    \item \code{pure Leaf} inserisce il costruttore \code{Leaf} nel contesto - ora ha tipo \code{f (b -> Tree b)}
+    \item \code{<*> g x} - si usa \code{<*>} per passare il valore dentro \code{g x} (di tipo \code{f b}) alla funzione dentro \code{pure Leaf} 
+    \item in questo modo, is ottiene una foglia nel contesto: \code{f (Tree b)}
+\end{itemize}
+
+\code{pure Node <*> traverse g l <*> traverse g r}
+
+\begin{itemize}
+    \item le due chiamate \code{traverse g} restituiscono i sottoalberi modificati e contestualizzati: \code{f (Tree b)}
+    \item come sopra, \code{Node} va inserito nel contesto tramite \code{pure}, e come prima si usa \code{<*>} per passare i (due questa volta) argomenti al costruttore
+\end{itemize}
+
+\end{gframe}
 
 
 \end{document}
