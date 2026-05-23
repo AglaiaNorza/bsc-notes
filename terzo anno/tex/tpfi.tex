@@ -952,7 +952,103 @@ Questo comportamento è formalizzato dal seguente teorema:
 
 Ovvero, se esite una riduzione terminante, tra quelle che terminano c'è sicuramente la CBN.
 
-\section{TODO: funzioni strette e non strette}
+\section{Funzioni non strette}
+Nei linguaggi imperativi, tutte le funzioni di base sono strette (\textbf{strict}): se viene passato loro un valore che va in loop infinito (o crasha), l'intero programma fallisce.
+
+In Haskell, grazie alla valutazione lazy, si possono definire funzioni non strette.
+
+\begin{defframe}{Funzione non stretta}{}
+    Una funzione si dice non stretta se è in grado di restituire un valore anche quando la valutazione di alcuni dei suoi parametri potrebbe non terminare o generare un errore.
+
+    (Una funzione è stretta se \code{f(undefined) = undefined}.)
+\end{defframe}
+
+Un esempio molto semplice è il ``cancellatore'' K:
+\begin{haskellbox}{}
+K = \x y -> x
+
+omega x = omega x -- loop infinito
+
+> K id (omega 4) 3
+> 3 -- valuta a 3 perché K non dipende dal suo secondo argomento
+\end{haskellbox}
+
+\begin{gframe}{Esempio: \code{null}}
+    Consideriamo la funzione predefinita \code{null}, che verifica se una lista sia vuota.
+
+    Per sapere se una lista è vuota, ad Haskell non serve calcolare l'intera lista o i suoi elementi: basta fare pattern-matching per vedere se la lista è in WHNF, ovvero se mostra il costruttore \code{:} o \code{[]}.
+
+    \begin{haskellbox}{}
+myNull [] = True
+myNull _ = False
+
+> myNull [undefined]
+> False
+
+> myNull (undefined:undefined)
+> False
+
+> myNull undefined 
+> *** Exception: Prelude.undefined
+    \end{haskellbox}
+\end{gframe}
+
+\begin{gframe}{Esempio: varianti di OR}
+I linguaggi imperativi implementano nativamente la ``valutazione a corto circuito'' per gli operatori logici; ad esempio,
+\begin{verbatim}
+if (x == 0 || mod(y, x) == 2)
+\end{verbatim}
+non genererà mai un errore di divisione per zero quando \code{x == 0}, perché la prima condizione valuta a \code{True} e il sistema termina saltando la seconda espressione. 
+
+Tuttavia, a causa della politica call-by-value di C, è impossibile definire una funzione personalizzata:
+\begin{verbatim}
+int myor(int x, int y)
+\end{verbatim}
+che si comporti esattamente come l'operatore \code{||}. La call-by-value, infatti, forzerà sempre e comunque la valutazione preliminare di entrambi i parametri prima di effettuare la chiamata. In Haskell, al contrario, la natura lazy del linguaggio ci permette di farlo senza problemi.
+
+Possiamo scrivere diverse definizioni della funzione OR in Haskell per analizzarne la tolleranza verso espressioni non valutabili (\code{undefined}):
+
+\begin{haskellbox}{}
+-- 1. left OR (valuta prima il primo parametro)
+leftor :: Bool -> Bool -> Bool
+leftor True  _ = True
+leftor False x = x
+
+-- 2. eager OR (forza la valutazione di entrambi)
+eagerOr :: Bool -> Bool -> Bool
+eagerOr True  True  = True
+eagerOr False True  = True
+eagerOr True  False = True
+eagerOr False False = False
+
+-- 3. which OR (basato sull'ordine dei pattern)
+whichor :: Bool -> Bool -> Bool
+whichor False False = False
+whichor _     _     = True
+
+-- 4. right OR (definito tramite inversione dei parametri)
+rightor :: Bool -> Bool -> Bool
+rightor = flip leftor
+\end{haskellbox}
+
+Interrogando l'interprete con il valore \code{undefined}, scopriamo che queste definizioni apparentemente equivalenti mostrano comportamenti semantici diversi:
+\begin{itemize}
+    \item \code{leftor True undefined} $\rightarrow$ \code{True}: il primo argomento soddisfa la clausola
+        \\ \code{leftor True \_}, quindi il secondo argomento viene ignorato e non causa l'eccezione
+    \item \code{eagerOr True undefined} $\rightarrow$ \code{*** Exception: Prelude.undefined}: la definizione esplicita costringe il runtime a risolvere il valore di entrambi i parametri per decidere quale riga applicare
+    \item \code{whichor True undefined} $\rightarrow$ \code{True}: questo caso dipende dall'ordine di valutazione dei pattern: l'interprete analizza la prima riga (\code{False False}), non trova un match e scende immediatamente alla seconda riga, che cattura l'espressione restituendo \code{True} senza toccare il secondo argomento
+    \item \code{rightor undefined True} $\rightarrow$ \code{True}: come il simmetrico di \code{leftor}, questa variante riesce a cortocircuitare a \code{True} se l'argomento valido si trova a destra
+\end{itemize}
+
+Sarebbe ideale poter disporre di un Parallel OR (\code{por}), una funzione definita in modo tale da soddisfare contemporaneamente le seguenti equazioni:
+\begin{haskellbox}{}
+por undefined True == True
+por True undefined == True
+\end{haskellbox}
+
+In Haskell standard, purtroppo, questo non è realizzabile. L'interprete fissa un ordine di valutazione sequenziale rigoroso: esplora i pattern dall'alto verso il basso e i parametri da sinistra a destra (a meno di pattern non stringenti come le variabili libere). Per ottenere il comportamento del \code{por} (noto teoricamente come l'operatore \textit{por} del sistema PCF), il runtime dovrebbe eseguire le due espressioni concorrentemente in parallelo, fermandosi non appena una delle due termina con successo e congelando o bloccando l'eccezione dell'altra.
+\end{gframe}
+
 \section{TODO: tecniche di ottimizzazione (09)}
 
 \section{\code{scanl} e \code{scanr}}
