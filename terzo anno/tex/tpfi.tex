@@ -1049,9 +1049,218 @@ por True undefined == True
 In Haskell standard, purtroppo, questo non è realizzabile. L'interprete fissa un ordine di valutazione sequenziale rigoroso: esplora i pattern dall'alto verso il basso e i parametri da sinistra a destra (a meno di pattern non stringenti come le variabili libere). Per ottenere il comportamento del \code{por} (noto teoricamente come l'operatore \textit{por} del sistema PCF), il runtime dovrebbe eseguire le due espressioni concorrentemente in parallelo, fermandosi non appena una delle due termina con successo e congelando o bloccando l'eccezione dell'altra.
 \end{gframe}
 
-\section{TODO: tecniche di ottimizzazione (09)}
+\section{Tecniche di ottimizzazione}
 
-\section{\code{scanl} e \code{scanr}}
+\subsection{Impatto della Laziness sulla Complessità Asintotica}
+Nei linguaggi a valutazione eager, la complessità asintotica della composizione di due funzioni $f \cdot g$ applicate a un input $x$ è data dalla somma del costo necessario a valutare l'argomento sommato al costo della funzione esterna. 
+
+Nei linguaggi lazy questo principio cessa di essere valido: la funzione esterna $f$ potrebbe richiedere solo una valutazione parziale del risultato di $g$, o dipendere esclusivamente da una frazione microscopica dei dati generati da $g(x)$. Poiché non esiste ancora una teoria formale onnicomprensiva in grado di modellare analiticamente la complessità lazy, si adotta convenzionalmente il modello eager come \textit{upper bound} per stimare il comportamento dei programmi.
+
+\begin{gframe}{Esempio: \code{head . insSrt}}
+Un esempio di come la valutazione lazy alteri la complessità di una computazione consiste nel determinare il valore minimo di una lista effettuando una chiamata alla funzione \code{head} su una lista preventivamente ordinata tramite l'algoritmo Insertion Sort (\code{insSrt}):
+
+\begin{haskellbox}{}
+ins :: Ord a => a -> [a] -> [a]
+ins y [] = [y]
+ins y (x:xs)
+  | y <= x    = y : x : xs
+  | otherwise = x : ins y xs
+
+insSrt :: Ord a => [a] -> [a]
+insSrt []     = []
+insSrt (x:xs) = ins x (insSrt xs)
+
+minimo :: Ord a => [a] -> a
+minimo = head . insSrt
+\end{haskellbox}
+
+In un paradigma d'esecuzione di tipo eager, l'ordinamento completo della lista verrebbe eseguito in ogni caso, imponendo all'intera computazione un costo quadratico pari a $\Theta(n^2)$. 
+
+In Haskell, la funzione \code{head} esige la valutazione del suo argomento esclusivamente fino al raggiungimento della Weak Head Normal Form, la quale coincide con la determinazione del primo costruttore di cella \code{:} e del relativo elemento di testa. Durante l'elaborazione, la funzione di inserimento ordinato \code{ins} viene srotolata unicamente per la frazione di passi strettamente necessaria a identificare e spingere l'elemento minimo assoluto in cima alla lista. La pigrizia del runtime interrompe il calcolo del resto dell'ordinamento non appena la testa è visibile. Di conseguenza, la valutazione lazy converte implicitamente la semantica di un \textit{Insertion Sort} in quella di un \textit{Selection Sort}, facendo crollare la complessità asintotica dell'operazione da quadratica a lineare $\Theta(n)$.
+\end{gframe}
+
+\subsubsection{Compromesso Spazio-Tempo: powerset}
+Al fine di preservare la trasparenza referenziale e l'assenza di effetti collaterali, i dati in Haskell sono strutturalmente immutabili. L'impossibilità di modificare le strutture \textit{in-place} comporta la necessità di effettuare copiature e allocazioni continue nell'heap, costringendo il programmatore funzionale a valutare attentamente il bilanciamento tra tempo di computazione e occupazione di memoria, come dimostrato dal calcolo dell'insieme delle parti (\code{powerset}).
+
+Una prima implementazione ottimizza il tempo di calcolo memorizzando il risultato ricorsivo all'interno di una clausola locale \code{where}:
+
+\begin{haskellbox}{}
+powerset :: [a] -> [[a]]
+powerset []     = [[]]
+powerset (x:xs) = ps ++ map (x:) ps
+  where ps = powerset xs
+\end{haskellbox}
+
+Questa formulazione previene il ricalcolo di espressioni identiche ed esegue un numero di riduzioni temporalmente ottimo pari a $\Theta(2^n)$. Tuttavia, dal punto di vista dello spazio, la lista \code{ps} deve essere integralmente preservata in memoria lungo l'intera discesa ricorsiva per consentire la successiva valutazione della parte destra dell'espressione, generando un carico di ritenzione elevato nell'heap.
+
+Al contrario, è possibile implementare l'algoritmo effettuando due chiamate ricorsive esplicite e separate:
+
+\begin{haskellbox}{}
+powersetLento :: [a] -> [[a]]
+powersetLento []     = [[]]
+powersetLento (x:xs) = powersetLento xs ++ map (x:) (powersetLento xs)
+\end{haskellbox}
+
+In questa seconda versione, l'occupazione di spazio si riduce perché le sotto-liste possono essere deallocate dal garbage collector non appena consumate. Il prezzo da pagare si traduce in un incremento del tempo di calcolo, che sale a una complessità asintotica di $\Theta(n 2^n)$ a causa della totale duplicazione dell'albero delle chiamate ricorsive.
+
+\subsubsection{Memoization e Scope delle variabili}
+Per massimizzare il riutilizzo di strutture dati complesse o infinite, Haskell adotta una strategia di \textbf{memoization} (memorizzazione dei thunk già risolti). La persistenza di questa memoria non è tuttavia illimitata, ma è rigidamente governata dal livello di dichiarazione (\textit{scope}) delle espressioni:
+\begin{itemize}
+    \item \textbf{variabili top-level}: se una struttura dati viene definita al livello più esterno del modulo, una sua porzione valutata durante una computazione viene conservata stabilmente in memoria per l'intera durata del programma. Qualsiasi invocazione successiva accederà ai dati già calcolati a costo zero, migliorando i tempi a scapito di un consumo fisso di spazio.
+    \item \textbf{definizioni locali}: se la stessa struttura viene dichiarata internamente a una funzione mediante un blocco \code{where} o \code{let}, il runtime provvederà a scaricarla e deallocarla completamente non appena l'esecuzione di quel blocco termina. Questa pulizia previene la saturazione della memoria, ma costringe il sistema a ricalcolare interamente l'espressione da zero a ogni successiva chiamata della funzione.
+\end{itemize}
+
+\subsection{Parametri Accumulatori}
+Nella programmazione funzionale, l'allocazione e la deallocazione della memoria avvengono in modo implicito e, per preservare la trasparenza referenziale, i dati sono immutabili. Di conseguenza, la scrittura naive di alcuni algoritmi ricorsivi può comportare continue copiature di strutture dati o un numero ridondante di computazioni, inficiando l'efficienza in tempo e spazio.
+
+Una delle opzioni per ottimizzare le funzioni ricorsive consiste nell'uso dei \textbf{parametri accumulatori}: le informazioni possono essere memorizzato all'interno di parametri ausiliari condivisi tra le varie chiamate ricorsive, emulando la presenza di un piccolo ``stato'' locale.
+
+
+\begin{gframe}{Esempio: Fibonacci}
+Il calcolo della successione di Fibonacci basato direttamente sulla definizione matematica è un classico caso di funzione inefficiente:
+\begin{haskellbox}{}
+fib :: Int -> Int
+fib 0 = 1
+fib 1 = 1
+fib n = fib (n-1) + fib (n-2)
+\end{haskellbox}
+
+A causa delle doppie chiamate ricorsive ridondanti, questo algoritmo richiede un numero di somme esponenziale, con una complessità di $\Theta(\phi^n)$ (dove $\phi$ è la sezione aurea).
+
+Possiamo linearizzare il calcolo introducendo una funzione di supporto \code{fibAux} che sfrutta due parametri accumulatori per memorizzare, a ogni passo, gli ultimi due numeri di Fibonacci calcolati:
+
+\begin{haskellbox}{}
+fibE :: Int -> Int
+fibE n = fibAux n 2 0 1
+  where
+    fibAux n i f fp
+      | i == n    = f
+      | otherwise = fibAux n (i+1) (f+fp) f
+\end{haskellbox}
+
+In questo modo, lo stato del programma iterativo viene portato in avanti durante la ricorsione, riducendo la complessità del calcolo a un tempo lineare $\Theta(n)$.
+\end{gframe}
+
+\subsection{Tupling}
+Il \textbf{Tupling} è una tecnica di ottimizzazione che consiste nel far restituire a una funzione una tupla (tipicamente una coppia) contenente più informazioni correlate, calcolate simultaneamente durante un'unica scansione di una struttura dati. Questo approccio consente di evitare passate multiple sulla stessa risorsa, riducendo sia i tempi di calcolo sia il numero di allocazioni in memoria.
+
+\begin{gframe}{Esempio: Fibonacci 2}
+Oltre all'uso dei parametri accumulatori che spingono lo stato in avanti, il calcolo efficiente dei numeri di Fibonacci può essere implementato facendo calcolare alla funzione ricorsiva gli ultimi due valori della successione, restituendoli all'indietro sotto forma di coppia:
+
+\begin{haskellbox}{}
+fib :: Int -> Int
+fib = fst . fibAux
+  where
+    fibAux 0 = (0, 1)
+    fibAux n = (f1 + f2, f1)
+      where
+        (f1, f2) = fibAux (n - 1)
+\end{haskellbox}
+\end{gframe}
+
+\subsubsection{Tupling con \code{foldr}}
+Dal punto di vista formale, quando dobbiamo determinare due proprietà distinte sulla stessa lista mediante due funzioni \code{foldr} indipendenti, è possibile fondere le due scansioni in un unico passaggio combinato grazie al tupling:
+\begin{equation*}
+    (\code{foldr f a xs}, \code{foldr g b xs}) = \code{foldr h (a, b) xs}
+\end{equation*}
+dove la funzione di accumulo combinata \code{h} è:
+\begin{equation*}
+    \code{h x (y, z)} = (\code{f x y}, \code{g x z})
+\end{equation*}
+
+Questa equivalenza matematica non è valida per liste parziali o indefinite. In Haskell, infatti, vale che:
+\begin{equation*}
+    \code{undefined} \neq (\code{undefined}, \code{undefined})
+\end{equation*}
+Mentre l'espressione \code{undefined} pura rappresenta un fallimento totale del calcolo (non è in WHNF), la coppia \code{(undefined, undefined)} è a tutti gli effetti un valore valido in WHNF, poiché il costruttore di coppia \code{(,)} al livello più esterno è visibile ed è già stato estratto. Di conseguenza, le funzioni che effettuano pattern matching sulla struttura esterna avranno comportamenti differenti nei due casi.
+
+\subsection{Strictness e gestione dello spazio}
+La valutazione lazy, sebbene prevenga computazioni superflue, introduce il rischio di accumulare sospensioni di calcolo (\textit{thunk}) non valutate nella heap. Questo fenomeno è particolarmente evidente nell'uso di determinati funzionali ricorsivi e prende il nome di \textit{space leak}.
+
+\subsubsection{\code{foldl} e \code{seq}}
+Il funzionale \code{foldl} è associativo a sinistra. Per sua natura, esso non estrae alcuna informazione utile durante la scansione della lista, limitandosi ad accumulare un'espressione nidificata di applicazioni funzionali che viene risolta solo dopo aver interamente esaurito la struttura:
+\begin{align*}
+    \code{foldl (+) 0 [1..4]} &= \code{foldl (+) (0+1) [2..4]} \\
+    &= \code{foldl (+) ((0+1)+2) [3..4]} \\
+    &= \code{foldl (+) (((0+1)+2)+3) [4]} \\
+    &= \code{foldl (+) ((((0+1)+2)+3)+4) []} \\
+    &= \code{((((0+1)+2)+3)+4)} \\
+    &= \code{10}
+\end{align*}
+Per una lista di lunghezza $n$, questo comportamento determina un consumo di spazio lineare $\Theta(n)$ nell'heap per memorizzare l'albero delle espressioni prima di avviare l'effettiva riduzione numerica.
+
+Per ovviare a questo spreco di memoria, Haskell introduce una primitiva speciale non definibile all'interno del linguaggio stesso:
+\begin{haskellbox}{}
+seq :: a -> b -> b
+\end{haskellbox}
+L'espressione \code{seq x y} forza la valutazione dell'argomento \code{x} fino alla WHNF prima di procedere con la valutazione e la restituzione del secondo argomento \code{y}.
+
+Sfruttando questa primitiva, la libreria \code{Data.List} definisce il funzionale strict \code{foldl'}, il quale forza la riduzione dell'accumulatore parziale a ogni singolo passo della ricorsione:
+\begin{haskellbox}{}
+foldl' :: (b -> a -> b) -> b -> [a] -> b
+foldl' f v []     = v
+foldl' f v (x:xs) = y `seq` foldl' f y xs
+  where y = f v x
+\end{haskellbox}
+Grazie a \code{seq}, l'accumulatore viene costantemente ridotto, mantenendo il consumo di spazio rigidamente costante $\Theta(1)$ per tutta la durata del ciclo ricorsivo.
+
+\begin{gframe}{Esempio: \code{foldl'} + \code{seq}}
+Non sempre però il solo utilizzo di \code{foldl'} basta ad evitare space leaks.
+
+Consideriamo il problema di calcolare la media degli elementi di una lista. Per effettuare il calcolo in un'unica passata ed evitare di scorrere la lista due volte (con \code{sum} e \code{length}), uniamo le due operazioni in una coppia applicando il funzionale \code{foldl'}:
+
+\begin{haskellbox}{}
+meanIngenuo :: [Float] -> Float
+meanIngenuo xs = s / fromIntegral l
+  where
+    (s, l) = foldl' (\(accS, accL) x -> (accS + x, accL + 1)) (0, 0) xs
+\end{haskellbox}
+
+Nonostante l'utilizzo di \code{foldl'} — che teoricamente è progettato per evitare la pigrizia forzando l'accumulatore ad ogni passo — questo codice continua ad accumulare espressioni non valutate (\emph{thunk}), fallendo l'obiettivo di operare in spazio costante $\Theta(1)$.
+
+Il motivo risiede nel fatto che \code{foldl'} riduce l'accumulatore solo fino alla WHNF. Per una tupla nella forma \code{(f x, g x)}, trovarsi in WHNF significa semplicemente che il runtime verifica la presenza del costruttore di coppia esterno \code{(,)} e arresta immediatamente la riduzione, senza scendere a valutare le espressioni numeriche racchiuse all'interno.
+
+A ogni iterazione sulla lista, la struttura in memoria si evolve quindi in questo modo:
+\begin{itemize}
+    \item passo 1: \code{(0 + x1, 0 + 1)}
+    \item passo 2: \code{((0 + x1) + x2, (0 + 1) + 1)}
+    \item passo 3: \code{(((0 + x1) + x2) + x3, ((0 + 1) + 1) + 1)}
+\end{itemize}
+Invece di calcolare i valori correnti, Haskell accumula una catena di somme sospese dentro la tupla che cresce linearmente con la lunghezza della lista, causando potenzialmente uno stack overflow.
+
+Per risolvere il problema e garantire un consumo di spazio costante $\Theta(1)$, bisogna spingere manualmente la valutazione fino alla profondità necessaria. Usando l'operatore \code{seq}, possiamo forzare la riduzione dei singoli elementi numerici della coppia prima di procedere con l'iterazione successiva:
+
+\begin{haskellbox}{}
+meanEfficiente :: [Float] -> Float
+meanEfficiente xs = s / fromIntegral l
+  where
+    (s, l) = foldl' f (0, 0) xs
+    f (accS, accL) x = accS `seq` accL `seq` (accS + x, accL + 1)
+\end{haskellbox}
+\end{gframe}
+
+\subsubsection{Divergenza tra \code{foldl} e \code{foldl'}}
+Sebbene su funzioni strettamente numeriche \code{foldl} e \code{foldl'} producano lo stesso identico risultato, essi possono divergere semanticamente nel caso in cui la funzione foldata \textbf{non sia stretta} sul suo primo argomento.
+
+Consideriamo la seguente funzione non stretta:
+\begin{haskellbox}{}
+f :: Int -> Int -> Int
+f acc x = if x == 0 then undefined else 0
+\end{haskellbox}
+Valutando l'espressione \code{foldl f 0 [0, 2]} e la sua controparte strict \code{foldl' f 0 [0, 2]}, si ottengono due esiti differenti:
+\begin{itemize}
+    \item \code{foldl f 0 [0, 2]} $\rightarrow$ \code{0}: la riduzione procede in modo lazy ed espande l'espressione in \code{f (f 0 0) 2}. Poiché il secondo argomento della chiamata esterna è \code{2} ($\neq 0$), la condizione dell'If fallisce e la funzione esterna restituisce immediatamente \code{0}, ignorando completamente l'argomento interno \code{(f 0 0)} grazie alla valutazione non stretta.
+    \item \code{foldl' f 0 [0, 2]} $\rightarrow$ \code{*** Exception: Prelude.undefined}: il meccanismo di \code{seq} forza la valutazione dell'accumulatore intermedio alla prima iterazione, calcolando preventivamente \code{f 0 0}. Poiché in questo passo il secondo argomento è \code{0}, l'espressione collassa immediatamente in \code{undefined}, propagando l'eccezione e interrompendo l'intera esecuzione.
+\end{itemize}
+
+\subsection{Zucchero Sintattico: \code{\$} e \code{\$!}}
+Haskell fornisce due operatori infissi per effettuare l'applicazione di funzioni riducendo l'uso delle parentesi esterne:
+\begin{itemize}
+    \item \textbf{\code{\$}} (applicazione lazy): definito come \code{f \$ x = f x}, mantiene l'argomento non valutato.
+    \item \textbf{\code{\$!}} (applicazione eager): definito come \code{f \$! x = x `seq` f x}, forza la valutazione dell'argomento a WHNF prima di applicarvi la funzione \code{f}.
+\end{itemize}
+
+\subsection{\code{scanl} e \code{scanr}}
 \code{scanl} e \code{scanr} sono due funzionali che permettono di processare una lista restituendo non solo il risultato finale (come fa un fold), ma una lista contenente tutti i \textbf{risultati intermedi} della computazione.
 
 Come \code{foldr} e \code{foldl}, i due funzionali si distinguono per la direzione in cui accumulano i risultati:
