@@ -787,11 +787,175 @@ Ricordando la definizione di \code{foldr} basata sulla decomposizione della list
 \end{itemize}
 \end{proofframe}
 
-\section{TODO: call-by-name + laziness (08)}
+\section{Lazy evaluation}
+La valutazione lazy di Haskell è formata da tre aspetti precisi:
+$$ \text{WHNF} + \text{Call-by-name} + \text{Sharing}$$
+
+\subsection{Weak Head Normal Form (WHNF)}
+Nel $\lambda$-calcolo (e in generale), è possibile scegliere diversi insiemi come \textit{termini} (valori che non è necessario ridurre ulteriormente).
+
+Una scelta naturale è quella della \textbf{forme normali}, ovvero i termini che non contengono redex (e.g. $\lambda x.x$ o $\lambda xyz.xz(yz)$).
+
+Un'altra opzione è quella delle \textbf{forme normali di testa} (\textit{head-normal form}).
+
+\begin{defframe}{Head-Normal Form}{}
+Un qualsiasi termine generico nel $\lambda$-calcolo si può scrivere in questa forma strutturale:
+$$ \lambda x_1 \dots x_n \ . \ (M_0  M_1 \dots M_k)$$
+
+Il termine più a sinistra nelle parentesi ($M_0$) si chiama \textit{head}.
+
+Un termine è in \textbf{head-normal form} se l'elemento in testa ($M_0$) è una \textbf{variabile} (libera o legata) e non è possibile fare alcuna $\beta$-riduzione in quella posizione.
+
+Ovvero, se ha la struttura:
+$$ \lambda x_1 \dots x_n \ . \ (x \ M_1 \dots M_k)$$
+
+(dove $x$ è una variabile, e gli $M_i$ non sono necessariamente in forma normale).
+
+(se il termine è un termine chiuso - i.e. senza variabili libere - $x$ deve essere una delle variabili legate dal $\lambda$)
+
+Ovvero, un termine è in hnf se la ``testa'' della computazione è stabile.
+\end{defframe}
+
+Un'altra alternativa è data dalla whnf, versione più lazy:
+
+\begin{defframe}{Weak-Head-Normal Form}{}
+    Un termine è in \textbf{weak-head-normal form} se si trova in uno di questi due stati:
+    \begin{itemize}
+        \item è in HNF (quindi ha una variabile in testa), oppure
+        \item inizia con una $\lambda$-astrazione esterna, indipendentemente da cosa c'è dentro
+    \end{itemize}
+
+    Ovvero, se ha una di queste due strutture:
+    \begin{itemize}
+        \item $x \ M_1 \dots M_k$
+        \item $\lambda x . M$
+    \end{itemize}
+\end{defframe}
+
+\begin{gframe}{Alcuni esempi}
+    Dato $\Omega = (\lambda x . xx) (\lambda x . xx)$:
+    \begin{itemize}
+        \item $\lambda e . \Omega$ è in WHNF (inizia con $\lambda e$) ma non in HNF (dentro il lambda la head è $\Omega$, che non è una variabile)
+        \item $x \ \Omega$ è in WHNF e anche in HNF (la testa è una variabile)
+        \item $\Omega$ non è in WHNF e neanche in HNF (non è un $\lambda$ e non inizia con una variabile)
+    \end{itemize}
+\end{gframe}
+
+Quindi, per Haskell, un'espressione viene considerata un ``valore'' quando raggiunge la whnf (ovvero quando il guscio più esterno è un blocco invalutabile).
+
+Perciò:
+\begin{itemize}
+    \item una funzione pura è un valore (è un $\lambda$)
+    \item se l'espressione è un'applicazione di funzione, Haskell sostituisce il nome della funzione con il suo corpo interno (la sua ``definizione'') e continua a ridurre l'espressione fino a quando non riesce ad ``estrarre'' un $\lambda$ all'esterno
+        \begin{itemize}
+            \item per esempio, usiamo la funzione \code{id} per definire una nuova funzione:
+                \begin{haskellbox}{}
+creaAdd :: Int -> (Int -> Int)
+creaAdd x = id (\y -> x + y)
+                \end{haskellbox}
+            \item e proviamo a valutare l'espressione \code{creaAdd 5}
+            \item Haskell vede \code{creaAdd 5}; per prima cosa sostituisce il nome della funzione con il suo corpo applicando l'argomento: \code{id (\textbackslash y -> 5 + y)}
+            \item questa espressione non è ancora in whnf (perché è un'applicazione)
+            \item il sistema valuta quindi il redex più esterno (l'applicazione di \code{id});\\
+                riduce quindi a \code{\textbackslash y -> 5 + y}
+            \item questa espressione è in whnf, quindi Haskell smette di valutarla
+        \end{itemize}
+\end{itemize}
+
+Per quanto riguarda i \textbf{tipi di dato}, invece, Haskell li definisce come in whnf se il costruttore di dati più esterno è visibile e non può essere ulteriormente ridotto.
+
+Per esempio, nel caso delle liste (definite tramite i costruttori \code{:} e \code{[]}): una lista è in whnf se è nella forma \code{x:xs}, indipendentemente dal fatto che \code{x} e \code{xs} siano valutate.
+
+Per esempio, sono in whnf sia \code{(3+2) : merge [1,2,3] [4, 5,6]} che \\ \code{undefined : undefined}.
+
+\subsection{Call-by-name (CBN)}
+I linguaggi imperativi usano spesso la \textit{call-by-value}. In CBV (eager), gli argomenti di una funzione vengono valutati prima che l'esecuzione entri nella funzione stessa (per più informazioni, vedi anche \\ \href{https://raw.githubusercontent.com/AglaiaNorza/notes-ig/main/terzo%20anno/linguaggi%20di%20programmazione.pdf}{\underline{appunti del corso ``Linguaggi di programmazione''}}).
+
+La \textbf{Call-By-Name} ribalta questo funzionamento:
+\begin{itemize}
+    \item gli argomenti vengono passati alla funzione come espressioni non ancora valutate
+    \item le espressioni vengono valutate solo quando (e se !!) i loro valori sono necessari
+    \item la selezione dell'ordine di calcolo segue la strategia \textit{leftmost-outermost}: il motore di runtime valuta sempre il \textit{redex} situato più all'esterno e più a sinistra
+\end{itemize}
+
+Per esempio, se consideriamo questo caso:
+\begin{haskellbox}{}
+constFun x = 3
+
+loop x = loop x -- computazione infinita
+
+-- vogliamo valutare:
+> constFun (loop 1)
+\end{haskellbox}
+\begin{itemize}
+    \item se si valuta \code{constFun (loop 1)} in CBV, il sistema cercherà di valutare \code{loop 1}, causando un ciclo infinito
+    \item se si valuta in CBN, invece, l'espressione rimane in-valutata; poiché il corpo non la usa, la funzione restituirà semplicemente \code{3}
+\end{itemize}
+
+La Call-By-Name nativa ha però un difetto: \textbf{non ha memoria}.
+
+Se definiamo qualcosa come \code{sqr x = x * x} e proviamo a valutare \code{sqr (3+4)}, otteniamo \\ \code{sqr (3+4) * (3+4)}: nonostante si tratti dello stesso \code{x}, l'argomento viene duplicato. Per ottenere il risultato dobbiamo quindi calcolare $3+4$ due volte.
+
+Haskell risolve questo problema introducendo lo \textbf{sharing}.
+
+\subsection{Sharing}
+Per evitare il difetto di duplicazione della CBN, Haskell rappresenta i \textbf{thunk} (sospensioni di calcolo) in memoria non come alberi, ma come \textbf{DAG} (grafi diretti aciclici).
+
+Quando un argomento viene passato a una funzione, Haskell non copia l'espressione in due luoghi distinti in memoria, ma crea due \textbf{puntatori che puntano allo stesso thunk} (gli argomenti verranno quindi valutati una volta sola).
+
+In questo modo, sappiamo con certezza che una valutazione lazy \textbf{non fa mai più riduzioni di una stessa valutazione eager}. Può invece farne anche molte di meno!
+
+Però, può lasciare molte sottoespressioni non valutate, occupando a volte molto spazio in memoria.
+
+Il teorema che ci assicura che la valutazione lazy sia corretta è il seguente:
+\begin{thmframe}{Teorema di confluenza [Church-Rosser]}{}
+    Se un'espressione può essere ridotta in due modi diversi arrivando a risultati diversi, esiste sempre una ``strada comune'' per farli ricongiungere.
+
+    Formalmente: se $M \to N$ e $M \to N'$, allora esiste un termine $P$ tale che $N \to P$ e $N' \to P$.
+\begin{center}
+\begin{tikzpicture}[
+    node distance=1cm and 1cm, 
+    font=\Large,
+    >=latex,    
+    thick     
+]
+    \node (M) {$M$};
+    \node (N1) [below left=of M] {$N$};
+    \node (N2) [below right=of M] {$N'$};
+    \node (P)  [below right=of N1] {$P$};
+
+    \draw[->] (M) -- (N1);
+    \draw[->] (M) -- (N2);
+    \draw[->] (N1) -- (P);
+    \draw[->] (N2) -- (P);
+\end{tikzpicture}
+\end{center}
+
+\end{thmframe}
+
+Il fatto che $P$ esista non vuol dire che sia facile trovarlo. Tuttavia, se tutte le riduzioni di $M$ terminano, allora necessariamente $P$ è un valore e viene raggiunto da tutte le riduzioni.
+
+\begin{corframe}{Unicità delle forme normali}{}
+    Se $N$ e $N'$ sono forme normali e $M \to *N$ e $M \to *N'$, allora $N = N'$
+\end{corframe}
+
+Non è detto che le forme normali vengano trovate, perché ci potrebbero essere computazioni non terminanti.
+
+Un esempio canonico è il termine K I $\Omega$. 
+
+Con la CBV, si proverebbe a ridurre $\Omega$, e si andrebbe avanti all'infinito. Con la CBN, invece, si applica prima la funzione a sinistra (leftmost-outermost): poiché K restituisce solo il primo argomento, ignora completamente la valutazione di $\Omega$. Con un solo passo si ottiene il risultato finale: I.
+
+Questo comportamento è formalizzato dal seguente teorema:
+\begin{thmframe}{Teorema di standardizzazione}{}
+    Se per un termine $M$ esiste una riduzione $M \to P$ e $P$ è in forma normale, allora la computazione call-by-name (\textit{leftmost-outermost}) è tale per cui $M \to_{cbn} P$ in un numero finito di passi.
+\end{thmframe}
+
+Ovvero, se esite una riduzione terminante, tra quelle che terminano c'è sicuramente la CBN.
+
 \section{TODO: funzioni strette e non strette}
 \section{TODO: tecniche di ottimizzazione (09)}
 
-\section{scanl e scanr}
+\section{\code{scanl} e \code{scanr}}
 \code{scanl} e \code{scanr} sono due funzionali che permettono di processare una lista restituendo non solo il risultato finale (come fa un fold), ma una lista contenente tutti i \textbf{risultati intermedi} della computazione.
 
 Come \code{foldr} e \code{foldl}, i due funzionali si distinguono per la direzione in cui accumulano i risultati:
