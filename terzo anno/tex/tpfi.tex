@@ -128,8 +128,8 @@
 \item \textbf{Non-terminazione, Bottom e \code{undefined}}: in Haskell, ogni tipo possiede implicitamente un valore speciale (chiamato \textit{bottom}, indicato matematicamente con $\bot$) che rappresenta un'eccezione fatale o una computazione che entra in un loop infinito
     \begin{itemize}
         \item \textbf{la costante \code{undefined}:} è la materializzazione a livello di codice del valore $\bot$ - poiché una computazione che fallisce o non termina può avvenire in qualsiasi contesto (mentre si aspetta un numero, un booleano, ecc.), \code{undefined} possiede il tipo più generale e polimorfo possibile: \code{a} (ovvero $\forall \alpha . \alpha$)
-        \item \textbf{Il limite del lambda calcolo (\textit{Occurs check}):} nel lambda calcolo puro, il loop infinito per eccellenza è il combinatore $\Omega = (\lambda x.xx)(\lambda x.xx)$. In Haskell, l'auto-applicazione $\lambda x.xx$ \textbf{non è tipabile}. Perché $x$ possa prendere se stesso come argomento, il suo tipo $\alpha$ dovrebbe essere uguale a una funzione che prende $\alpha$ come parametro e restituisce $\beta$ ($\alpha = \alpha \to \beta$). Questo creerebbe un tipo infinito (durante l'inferenza dei tipi, il compilatore esegue un controllo chiamato \textit{Occurs check} che impedisce alla variabile di tipo $\alpha$ di apparire all'interno della sua stessa definizione, rifiutando di conseguenza l'espressione)
-        \item \textbf{Ricorsione esplicita:} poiché il type system ci vieta di creare loop tramite l'auto-applicazione anonima di $\lambda x.xx$, in Haskell la non-terminazione si esprime unicamente attraverso la ricorsione esplicita. Definendo ad esempio \code{omega' = omega'}, creiamo intenzionalmente una computazione divergente che il compilatore accetta, assegnandole il tipo più generale \code{a}.
+        \item \textbf{l'occurs check:} nel lambda calcolo puro, il loop infinito per eccellenza è il combinatore $\Omega = (\lambda x.xx)(\lambda x.xx)$. In Haskell, l'auto-applicazione $\lambda x.xx$ \textbf{non è tipabile}. Perché $x$ possa prendere se stesso come argomento, il suo tipo $\alpha$ dovrebbe essere uguale a una funzione che prende $\alpha$ come parametro e restituisce $\beta$ ($\alpha = \alpha \to \beta$). Questo creerebbe un tipo infinito (durante l'inferenza dei tipi, il compilatore esegue un controllo chiamato \textit{occurs check} che impedisce alla variabile di tipo $\alpha$ di apparire all'interno della sua stessa definizione, rifiutando di conseguenza l'espressione)
+        \item \textbf{ricorsione esplicita:} poiché il type system ci vieta di creare loop tramite l'auto-applicazione anonima di $\lambda x.xx$, in Haskell la non-terminazione si esprime unicamente attraverso la ricorsione esplicita. Definendo ad esempio \code{omega' = omega'}, creiamo intenzionalmente una computazione divergente che il compilatore accetta, assegnandole il tipo più generale \code{a}.
     \end{itemize}
     \item \textbf{Ideologia funzionale:} l'ideologia funzionale favorisce l'assemblaggio di funzioni semplici tramite composizione (\code{.}). Si pensa in termini di trasformazioni globali di strutture dati, per poi raffinare in un secondo momento i colli di bottiglia prestazionali.
 \end{itemize}
@@ -183,7 +183,7 @@ confronta x y
 \begin{itemize}
     \item è meno comune, ma è possibile fare pattern-matching anche nelle \textit{lambda-espressioni}:
         \begin{haskellbox}{}
-            myFst' = \(x, y) -> x
+myFst' = \(x, y) -> x
         \end{haskellbox}
 \end{itemize}
 \end{itemize}
@@ -200,20 +200,35 @@ fibAux' n = (f + fPrec, f) where (f, fPrec) = fibAux' (n-1)
 \end{haskellbox}
 
 \begin{gframe}{differenza tra \code{let} e \code{where}}
-   una clausola \code{where} è visibile da tutte le guardie di una specifica equazione. Un \code{let} definito dopo il simbolo \code{=} di una guardia è visibile solo all'interno di quella singola guardia. Per condividere un calcolo tra più guardie, il \code{where} è obbligatorio.
-\end{gframe}
-
-\begin{haskellbox}{}
+    \begin{itemize}
+        \item \code{let ... in} è un'\textbf{espressione}: \textit{produce un valore}, e si può utilizzare ovunque sia legale inserire un'espressione (in una lista, in un'operazione, come argomento di funzione ecc.)
+            \begin{haskellbox}{}
+4 + (let x = 2 in x * 3) -- risultato: 10
+            \end{haskellbox}
+        \item \code{where} è una \textbf{clausola}: non produce un valore - serve a dichiarare ``a valle'' qualcosa che si è usato ``a monte''
+        \item \code{let} ha un approccio bottom-up: prima si definiscono le variabili e poi si utilizzano
+        \item \code{where} ha un approccio top-down: prima si scrive la logica della funzione, e poi si spiega cosa significano i vari pezzi (è spesso più leggibile per funzioni lunghe)
+    \end{itemize}
+    I due costrutti sono molto diversi anche per il loro comportamento con le \textbf{guardie} (\code{|}):
+    \begin{itemize}
+        \item le variabili definite in un \code{where} sono visibili a tutte le guardie
+            \begin{haskellbox}{}
 -- condivisione tra guardie
 analizzaRaggio r
   | area > 100 = "cerchio grande"
   | area < 10  = "cerchio piccolo"
   | otherwise  = "cerchio medio"
   where area = pi * r^2  -- 'area' calcolata una volta e visibile a tutti i pipe
-
--- inline: (serve il let perche' non c'e' una dichiarazione di funzione)
-volumeCilindro r h = (let area = pi * r^2 in area) * h
 \end{haskellbox}
+        \item un \code{let} si può usare in una guardia solo dopo il simbolo \code{=}, ovvero nel corpo di una specifica guardia - la variabile è quindi invisibile alle altre guardie
+            \begin{haskellbox}{}
+-- un codice di questo tipo non funziona:
+analizzaRaggio r
+  | area > 100 = "cerchio grande" -- errore! 'area' non esiste ancora
+  | otherwise  = let area = pi * r^2 in "cerchio medio" -- 'area' esiste solo qui dentro
+\end{haskellbox}
+    \end{itemize}
+\end{gframe}
 
 \newpage
 \section{Sistema dei Tipi e Classi}
@@ -236,7 +251,7 @@ Le classi limitano il polimorfismo imponendo vincoli (o "interfacce") sui tipi. 
 
 \begin{itemize}
     \item \textbf{Eq (Equality Types):} comprende i tipi che ammettono l'uguaglianza (\code{==}) e la sua negazione (\code{/=}). Tutti i tipi base (Bool, Int, Float, ecc.) sono istanze di Eq, così come le liste e tuple costruite su tipi Eq
-        \subitem \textit{definizione interna di Eq}
+        \subitem \textit{definizione interna di Eq:}
         \begin{haskellbox}{}
 class Eq a where
   (==), (/=) :: a -> a -> Bool
@@ -291,7 +306,7 @@ data Maybe a = Just a | Nothing                    -- gestione fallimenti
 data List a = Nil | Cons a (List a)                -- ricorsivi/induttivi
 data BTree a = Foglia a | Radice (BTree a) (BTree a)
 \end{haskellbox}
-\subsubsection{Il costruttore di tipo \code{Maybe}}
+\subsection{Il costruttore di tipo \code{Maybe}}
 Il tipo \code{Maybe} è il tipo di computazioni che possono fallire. In Haskell, è il tipo con cui si rappresentano comunemente le eccezioni in maniera sicura e controllata dal sistema di tipi (corrisponde a \code{optional})
 
 Un valore di tipo \code{Maybe} può assumere due forme:
@@ -352,6 +367,7 @@ instance Eq Bool where
     \item Dal punto di vista del calcolo, \code{let x = N in M} è equivalente all'applicazione di una lambda: \code{(\textbackslash x -> M) N}. Tuttavia, il compilatore Haskell tratta i due casi in modo diverso durante l'inferenza dei tipi.
 
     \item \textbf{Let-Polymorphism:}
+        \subitem (per più informazioni, vedi anche \href{https://raw.githubusercontent.com/AglaiaNorza/notes-ig/main/terzo%20anno/linguaggi%20di%20programmazione.pdf}{\underline{appunti del corso ``Linguaggi di programmazione''}})
 
     Il costrutto \code{let} permette di assegnare a una variabile un tipo polimorfo che viene "generalizzato" prima di essere usato nel corpo (\code{in}).
     \begin{itemize}
@@ -427,13 +443,8 @@ myUndefined = myUndefined
 \end{enumerate}
 \end{itemize}
 
-
-
 Haskell permette quindi di manipolare la non-terminazione come un valore reale. Ogni tipo in Haskell è in realtà "puntato" (\textit{pointed}), ovvero contiene sempre almeno un valore: $\bot$.
 \end{gframe}
-
-
-
 
 \section{Strutture Dati Predefinite}
 
@@ -546,10 +557,19 @@ zipWith :: (a -> b -> c) -> [a] -> [b] -> [c]
 \end{haskellbox}
 
 \subsection{Famiglia dei \code{fold} (schemi di ricorsione)}
-I \code{fold} astraggono il concetto di ricorsione strutturale sulle liste, sostituendo i costruttori della struttura dati (l'operatore \code{(:)} e la lista vuota \code{[]}) con funzioni e valori specifici. Se l'operatore \code{\#} è associativo e ha \code{e} come elemento neutro, allora $\code{foldl (\#) e} = \code{foldr (\#) e}$.
+I \code{fold} astraggono il concetto di ricorsione strutturale sulle liste, sostituendo i costruttori della struttura dati (l'operatore \code{(:)} e la lista vuota \code{[]}) con funzioni e valori specifici. 
+
+Se l'operatore \code{\#} è associativo e ha \code{e} come elemento neutro, allora $\code{foldl (\#) e} = \code{foldr (\#) e}$.
 
 \begin{itemize}
     \item \textbf{\code{foldr} (right fold):} associa a destra; la riduzione avviene "al ritorno" dalle chiamate ricorsive (costruisce espressioni). 
+        \begin{haskellbox}{}
+-- definizione algebrica:
+foldr :: (a -> b -> b) -> b -> [a] -> b
+foldr f z []     = z
+foldr f z (x:xs) = f x (foldr f z xs)
+        \end{haskellbox}
+
 \begin{itemize}
     \item sostituisce ricorsivamente il costruttore \code{(:)} con la funzione \code{f} data e \code{[]} con il valore base \code{z}.
         \item espansione: \code{foldr f z [x1, x2, x3]} diventa \code{x1 `f` (x2 `f` (x3 `f` z))}
@@ -566,6 +586,12 @@ myMap f xs = foldr (\x acc -> f x : acc) [] xs
 \end{haskellbox}
 
     \item \textbf{\code{foldl} (left fold):} associa a sinistra; simula un ciclo iterativo passando un accumulatore "in avanti"
+        \begin{haskellbox}{}
+-- definizione algebrica:
+foldl :: (b -> a -> b) -> b -> [a] -> b
+foldl f z []     = z
+foldl f z (x:xs) = foldl f (f z x) xs
+        \end{haskellbox}
 \begin{itemize}
     \item valuta l'espressione partendo da sinistra e procedendo verso l'interno - valuta tutto solo alla fine della lista
         \item espansione: \code{foldl f z [x1, x2, x3]} diventa \code{((z `f` x1) `f` x2) `f` x3}
