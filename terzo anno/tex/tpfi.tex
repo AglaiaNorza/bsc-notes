@@ -693,21 +693,24 @@ Il $\lambda$-calcolo puro non ha tipi di dato predefiniti: tutto (booleani, nume
         \subitem \textbf{True ($K$):} $K \equiv \lambda x y. x$ (prende due argomenti e restituisce il primo)
         \subitem \textbf{False ($O$):} $O \equiv \lambda x y. y$ (prende due argomenti e restituisce il secondo)
     \item \textbf{If-Then-Else:} grazie alla definizione dei booleani, la struttura condizionale è codificata come un'applicazione: $if\ x\ then\ M\ else\ N \equiv x M N$. Se $x$ è True ($K$) selezionerà $M$, se è False ($O$) selezionerà $N$.
-    \item \textbf{Compositori ($S$):} $S \equiv \lambda x y z. x z (y z)$ (si può dimostrare che $S K K \approx I$).
+    \item \textbf{Compositore ($S$):} $S \equiv \lambda x y z. x z (y z)$ (prende due funzioni, $x$ e $y$, e applica $y$ a $z$ e $x$ al risultato dell'appplicazione, ottendendo $x . y$)
+        \subitem (si può dimostrare che $S K K \approx I$).
     \item \textbf{Duplicatori e divergenza:} 
         \subitem $\omega \equiv \lambda x.xx$ (auto-applicazione)
-        \subitem $\Omega \equiv \omega \omega \rightarrow \omega \omega \rightarrow \dots$ rappresenta la \textbf{funzione indefinita}, il loop infinito (non tipabile)
+        \subitem $\Omega \equiv (\lambda x.xx) (\lambda x.xx)$, ovvero $\omega \omega \rightarrow \omega \omega \rightarrow \dots$ rappresenta la \textbf{funzione indefinita}, il loop infinito (non tipabile)
 \end{itemize}
 
 \subsubsection{Numeri di Church e iteratori}
 I \textbf{Numerali di Church} rappresentano i numeri naturali come funzioni di ordine superiore che \textit{iterano} un'operazione. Il numero $n$ è una funzione che prende una funzione (es. successore) $s$ e un valore di partenza (es. zero) $z$, e applica $s$ ad $z$ esattamente $n$ volte
 $$\underline{n} \equiv \lambda s z. s(s(\dots(sz)\dots)) \quad [n\text{ applicazioni}]$$
 \begin{itemize}
-    \item $\underline{0} \equiv \lambda s z. z$ (equivale a \code{False})
+    \item $\underline{0} \equiv \lambda s z. z$ (equivale a False ($K$)) 
+    \item $\underline{1} \equiv \lambda s z. s z$
+    \item $\underline{2} \equiv \lambda s z. s(s(z))$
     \item $\underline{3} \equiv \lambda s z. s(s(s(z)))$
 \end{itemize}
 
-Per calcolare il successore ($+1$) di un numero di Church, basta creare una funzione che applica $s$ una volta in più: $succ \equiv \lambda x s z. s(x s z)$ (o anche $\lambda x s z. xs (s z)$)
+Per calcolare il \textbf{successore} ($+1$) di un numero di Church, basta creare una funzione che applica $s$ una volta in più: $succ \equiv \lambda x s z. s(x s z)$ (o anche $\lambda x s z. xs (s z)$)
 
 I numerali di Church non sono quindi solo dati, ma \textbf{iteratori intrinseci}.
 
