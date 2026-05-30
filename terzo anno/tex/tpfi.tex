@@ -777,7 +777,7 @@ L'obiettivo è quindi trovare funzioni o valori \code{h} e \code{b} tali che l'a
     \item \textbf{preservazione dell'identità}: \code{f a = b} mappa l'elemento neutro (accumulatore iniziale) del primo dominio in quello del secondo, analogamente a $f(1_A) = 1_B$.
     \item \textbf{preservazione dell'operazione}: La condizione \code{f(g x y) = h x (f y)} ricalca la proprietà omomorfica $f(a \bullet b) = f(a) \circ f(b)$. 
     \begin{itemize}
-        \item \textit{sorgente (\code{g x y})}: rappresenta l'operazione di combinazione di un elemento \code{x} con il risultato parziale \code{y} tramite la funzione \code{g}
+        \item \textit{sorgente (\code{g x y})}: rappresenta l'operazione di combinazione di un elemento \code{x} con il risultato parziale (accumulatore) \code{y} tramite la funzione \code{g}
         \item \textit{destinazione (\code{h x (f y)})}: rappresenta la nuova operazione \code{h} che combina \code{x} con il risultato già trasformato da \code{f}
     \end{itemize}
 \item \textbf{NB}: in \code{h x (f y)}, l'elemento \code{x} non viene trasformato da \code{f} - nella struttura della lista, \code{x} è un dato ``guida'' di tipo $A$, mentre \code{y} è il risultato della ricorsione (accumulatore) di tipo $B$. La fusion law mira a trasformare il \textit{risultato complessivo} del fold, non i singoli elementi contenuti nella lista.
@@ -815,6 +815,30 @@ Ricordando la definizione di \code{foldr} basata sulla decomposizione della list
           \subitem\code{f (g x y) = h x (f y)}
 \end{itemize}
 \end{proofframe}
+
+Per esempio, consideriamo la composizione \code{sum . map (*2)}.
+
+Abbiamo che \code{map (*2)} si può scrivere come una \code{foldr} in questo modo: \\
+\code{map (*2) = foldr (\textbackslash x acc -> (x * 2) : acc) []}
+
+Usiamo la fusion law per fondere \code{sum} e \code{map}:
+\begin{itemize}
+    \item \code{sum undefined = undefined}
+    \item \code{sum [] = 0} (il nostro accumulatore iniziale è \code{0})
+    \item $f (g \ x \ y) = h \ x (f \ y)$:
+        \begin{itemize}
+            \item a sinistra abbiamo $sum ((x*2) : y)$, che per definizione è $(x*2) + sum\  y$
+            \item a destra abbiamo $h \ x \ (sum \ y)$
+            \item uguagliamo: $(x*2) + sum\  y = h \ x \ (sum \ y)$
+            \item se sostituiamo $sum \ y$ con un generico $total$, otteniamo la definizione di $h$: $h \ x \ total = (x*2) + total$
+        \end{itemize}
+\end{itemize}
+
+Otteniamo quindi il risultato fuso:
+\begin{haskellbox}{}
+sum . map (*2) = foldr (\x total -> (x * 2) + total) 0
+\end{haskellbox}
+
 
 \section{Lazy evaluation}
 La valutazione lazy di Haskell è formata da tre aspetti precisi:
