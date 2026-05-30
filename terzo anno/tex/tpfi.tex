@@ -842,7 +842,7 @@ sum . map (*2) = foldr (\x total -> (x * 2) + total) 0
 
 \section{Lazy evaluation}
 La valutazione lazy di Haskell è formata da tre aspetti precisi:
-$$ \text{WHNF} + \text{Call-by-name} + \text{Sharing}$$
+$$ \text{WHNF} + \underbracket{\text{Call-by-name} + \text{Sharing}}_{\text{``Call-by-need''}}$$
 
 \subsection{Weak Head Normal Form (WHNF)}
 Nel $\lambda$-calcolo (e in generale), è possibile scegliere diversi insiemi come \textit{termini} (valori che non è necessario ridurre ulteriormente).
@@ -862,7 +862,7 @@ Un termine è in \textbf{head-normal form} se l'elemento in testa ($M_0$) è una
 Ovvero, se ha la struttura:
 $$ \lambda x_1 \dots x_n \ . \ (x \ M_1 \dots M_k)$$
 
-(dove $x$ è una variabile, e gli $M_i$ non sono necessariamente in forma normale).
+(dove $x$ è una variabile, e gli $M_i$ non sono necessariamente in forma normale) (non è necessario che ci sia una lambda astrazione iniziale, anche $x \ M_1 \dots M_k$ è in HNF).
 
 (se il termine è un termine chiuso - i.e. senza variabili libere - $x$ deve essere una delle variabili legate dal $\lambda$)
 
@@ -951,6 +951,10 @@ Se definiamo qualcosa come \code{sqr x = x * x} e proviamo a valutare \code{sqr 
 
 Haskell risolve questo problema introducendo lo \textbf{sharing}.
 
+\begin{defframe}{Call-by-need}{}
+    La combinazione di Call-by-name e sharing viene chiamata \textbf{Call-by-need}.
+\end{defframe}
+
 \subsection{Sharing}
 Per evitare il difetto di duplicazione della CBN, Haskell rappresenta i \textbf{thunk} (sospensioni di calcolo) in memoria non come alberi, ma come \textbf{DAG} (grafi diretti aciclici).
 
@@ -989,7 +993,7 @@ Il teorema che ci assicura che la valutazione lazy sia corretta è il seguente:
 Il fatto che $P$ esista non vuol dire che sia facile trovarlo. Tuttavia, se tutte le riduzioni di $M$ terminano, allora necessariamente $P$ è un valore e viene raggiunto da tutte le riduzioni.
 
 \begin{corframe}{Unicità delle forme normali}{}
-    Se $N$ e $N'$ sono forme normali e $M \to *N$ e $M \to *N'$, allora $N = N'$
+    Se $N$ e $N'$ sono forme normali e $M \to N$ e $M \to N'$, allora $N = N'$
 \end{corframe}
 
 Non è detto che le forme normali vengano trovate, perché ci potrebbero essere computazioni non terminanti.
@@ -1105,7 +1109,7 @@ In Haskell standard, purtroppo, questo non è realizzabile. L'interprete fissa u
 \section{Tecniche di ottimizzazione}
 
 \subsection{Impatto della Laziness sulla Complessità Asintotica}
-Nei linguaggi a valutazione eager, la complessità asintotica della composizione di due funzioni $f \cdot g$ applicate a un input $x$ è data dalla somma del costo necessario a valutare l'argomento sommato al costo della funzione esterna. 
+Nei linguaggi a valutazione eager, la complessità asintotica della composizione di due funzioni $f \cdot g$ applicate a un input $x$ è data dalla somma del costo necessario a valutare l'argomento sommato al costo della funzione esterna: $T(f \cdot g) |x| = T(f) (|g(x)|) + T(g)|x|$.
 
 Nei linguaggi lazy questo principio cessa di essere valido: la funzione esterna $f$ potrebbe richiedere solo una valutazione parziale del risultato di $g$, o dipendere esclusivamente da una frazione microscopica dei dati generati da $g(x)$. Poiché non esiste ancora una teoria formale onnicomprensiva in grado di modellare analiticamente la complessità lazy, si adotta convenzionalmente il modello eager come \textit{upper bound} per stimare il comportamento dei programmi.
 
@@ -1144,7 +1148,7 @@ powerset (x:xs) = ps ++ map (x:) ps
   where ps = powerset xs
 \end{haskellbox}
 
-Questa formulazione previene il ricalcolo di espressioni identiche ed esegue un numero di riduzioni temporalmente ottimo pari a $\Theta(2^n)$. Tuttavia, dal punto di vista dello spazio, la lista \code{ps} deve essere integralmente preservata in memoria lungo l'intera discesa ricorsiva per consentire la successiva valutazione della parte destra dell'espressione, generando un carico di ritenzione elevato nell'heap.
+Questa formulazione previene il ricalcolo di espressioni identiche ed esegue un numero di riduzioni temporalmente ottimo pari a $\Theta(2^n)$. Tuttavia, dal punto di vista dello spazio, la lista \code{ps} deve essere integralmente preservata in memoria lungo l'intera discesa ricorsiva per consentire la successiva valutazione della parte destra dell'espressione, generando un carico di ritenzione elevato nella heap.
 
 Al contrario, è possibile implementare l'algoritmo effettuando due chiamate ricorsive esplicite e separate:
 
@@ -1302,7 +1306,7 @@ f acc x = if x == 0 then undefined else 0
 \end{haskellbox}
 Valutando l'espressione \code{foldl f 0 [0, 2]} e la sua controparte strict \code{foldl' f 0 [0, 2]}, si ottengono due esiti differenti:
 \begin{itemize}
-    \item \code{foldl f 0 [0, 2]} $\rightarrow$ \code{0}: la riduzione procede in modo lazy ed espande l'espressione in \code{f (f 0 0) 2}. Poiché il secondo argomento della chiamata esterna è \code{2} ($\neq 0$), la condizione dell'If fallisce e la funzione esterna restituisce immediatamente \code{0}, ignorando completamente l'argomento interno \code{(f 0 0)} grazie alla valutazione non stretta.
+    \item \code{foldl f 0 [0, 2]} $\rightarrow$ \code{0}: la riduzione procede in modo lazy ed espande l'espressione in \code{f (f 0 0) 2}. Poiché il secondo argomento della chiamata esterna è \code{2} ($\neq 0$), la condizione dell'if fallisce e la funzione esterna restituisce immediatamente \code{0}, ignorando completamente l'argomento interno \code{(f 0 0)} grazie alla valutazione non stretta.
     \item \code{foldl' f 0 [0, 2]} $\rightarrow$ \code{*** Exception: Prelude.undefined}: il meccanismo di \code{seq} forza la valutazione dell'accumulatore intermedio alla prima iterazione, calcolando preventivamente \code{f 0 0}. Poiché in questo passo il secondo argomento è \code{0}, l'espressione collassa immediatamente in \code{undefined}, propagando l'eccezione e interrompendo l'intera esecuzione.
 \end{itemize}
 
