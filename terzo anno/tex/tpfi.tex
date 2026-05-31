@@ -1485,7 +1485,7 @@ L'ordine si estende naturalmente ai tipi composti. L'idea è che una struttura �
 Per le liste si ha:
 \begin{itemize}
     \item $\bot \apprord xs$
-    \item $[ \ ] \apprord xs \iff xs = [ \ ] \land (x:xs) \not\apprord [ \ ]$
+    \item $[ \ ] \apprord xs \iff xs = [ \ ] \land (x:xs) \not\apprord [ \ ]$ (una lista vuota approssima un'altra lista solo se anche essa è vuota; una lista non vuota non può mai approssimare una lista vuota)
     \item $x:xs \apprord y:ys \iff x \apprord y \land xs \apprord ys$
 \end{itemize}
 
@@ -1504,7 +1504,7 @@ $$\text{date } f,g: a \to b \text{ si ha } f \apprord_{a\to b} g \iff \forall x.
 Se abbiamo una catena di approssimazioni $x_1 \apprord x_2 \apprord x_3 \dots$, questa tenderà ad un limite $\sqcup x = \lim_{n\to\infty} x_n$ che soddisfa le seguenti condizioni:
 \begin{itemize}
     \item per ogni $n$, $x_n \apprord \sqcup x$ (il limite è un maggiorante)
-    \item se per ogni $n$, $x_n \apprord y$, allora $\sqcup x \apprord y$ (il limite è il sup)
+    \item se per ogni $n$, $x_n \apprord y$, allora $\sqcup x \apprord y$ (il limite è il supremum, il minimo dei maggioranti (least upper bound))
 \end{itemize}
 {\color{gray}(simile al lemma di Zorn ma più forte)}
 
