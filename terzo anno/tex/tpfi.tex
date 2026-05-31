@@ -1544,7 +1544,7 @@ f(x) = \begin{cases}
 \end{cases}
 $
 \begin{itemize}
-    \item non è computabile perché non è monotona: $\bot \apprord x$, ma $0 \not\apprord 1$
+    \item non è computabile perché non è monotona: se l'input cresce da $\bot$ a un valore definito $x$ ($\bot \apprord x$), la monotonia richiederebbe che anche i rispettivi output mantengano l'ordine ($f(\bot) \apprord f(x)$); tuttavia, $0 \not\apprord 1$
 \end{itemize}
 
 \item $
@@ -1557,6 +1557,7 @@ $
     \item non è computabile perché non è continua: $\sqcup g \ x_n = \bot \neq 1 = g(\sqcup \ x_n)$
 \end{itemize}
 \end{itemize}
+
 \section{Teoremi di punto fisso}
 
 Nella semantica denotazionale, l'esecuzione di un programma ricorsivo è vista come la ricerca di un "punto fisso" di una funzione. Per formalizzare questo concetto, dobbiamo estendere la nozione di CPO a strutture algebriche più ricche.
@@ -1564,10 +1565,29 @@ Nella semantica denotazionale, l'esecuzione di un programma ricorsivo è vista c
 \begin{defframe}{Reticolo Completo}{}
     Un \textbf{reticolo completo} (Complete Lattice) $(L, \apprord)$ è un insieme parzialmente ordinato in cui \textit{ogni} sottoinsieme $A \subseteq L$ possiede sia un estremo inferiore che un estremo superiore:
     \begin{itemize}
-        \item Estremo superiore (Supremum): $\sqcup A = \min \{ x \mid \forall a \in A.\ x \ge a \}$
-        \item Estremo inferiore (Infimum): $\sqcap A = \max \{ x \mid \forall a \in A.\ x \le a \}$
+        \item Estremo superiore (Supremum): $\sqcup A = \min \{ x \mid \forall a \in A.\ a \apprord x \}$ (minimo insieme di maggioranti)
+        \item Estremo inferiore (Infimum): $\sqcap A = \max \{ x \mid \forall a \in A.\ x \apprord a \}$ (massimo insieme di minoranti)
     \end{itemize}
 \end{defframe}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        every node/.style={draw=black, rounded corners=3pt, minimum width=1.2cm, minimum height=0.6cm, inner sep=4pt, font=\small},
+        scale=1.6
+    ]
+        \node (top) at (0,2) {$\{1, 2\}$};
+        \node (a)   at (-1,1) {$\{1\}$};
+        \node (b)   at (1,1) {$\{2\}$};
+        \node (bot) at (0,0) {$\emptyset$};
+    
+        \draw[thick] (bot) -- (a);
+        \draw[thick] (bot) -- (b);
+        \draw[thick] (a) -- (top);
+        \draw[thick] (b) -- (top);
+    \end{tikzpicture}
+    \caption{Reticolo completo dell'insieme delle parti $\mathcal{P}(\{1,2\})$ ordinato per inclusione ($\subseteq$); l'estremo inferiore $\bot$ è l'insieme vuoto $\emptyset$, mentre l'estremo superiore $\top$ è l'insieme completo}
+\end{figure}
 
 Avere un reticolo completo ci permette di enunciare due teoremi fondamentali che garantiscono l'esistenza (e la calcolabilità) dei punti fissi per le funzioni su questi domini (un valore $x$ è un \textit{punto fisso} per una funzione $f$ se $f(x) = x$).
 
@@ -1589,7 +1609,7 @@ Il teorema di Knaster-Tarski assicura l'esistenza del punto fisso, ma non dice c
     \begin{align*}
         f^\omega &= \sup \{ f^i(\bot) \mid i < \omega \} \quad &\text{(per definizione di } f^\omega \text{)} \\
         &= \sup \{ f(f^i(\bot)) \mid i < \omega \} \quad &\text{(spostando l'indice di 1 passo)} \\
-        &= f(\sup \{ f^i(\bot) \mid i < \omega \}) \quad &\text{(\textbf{per la continuità di } } f\text{)} \\
+        &= f(\sup \{ f^i(\bot) \mid i < \omega \}) \quad &\text{(per la continuità di } f\text{)} \\
         &= f(f^\omega) \quad &\text{(sostituendo la definizione di } f^\omega\text{)}
     \end{align*}
     Poiché $f(f^\omega) = f^\omega$, $f^\omega$ è per definizione un punto fisso di $f$.
@@ -1655,7 +1675,20 @@ iter f b n = f (iter f b (n-1))
 
         Questo comportamento ricalca esattamente la semantica dei \textbf{Numerali di Church}. 
 
-Per ottenere una potenza espressiva maggiore, si passa allo schema della \textit{ricorsione primitiva} (l'operatore \code{rec}), in cui la funzione $f$ riceve in input anche il contatore $(n-1)$.
+Per ottenere una potenza espressiva maggiore, si passa allo schema della \textit{ricorsione primitiva} (l'operatore \code{rec}), in cui la funzione $f$ riceve in input anche il contatore $(n-1)$:
+
+\begin{haskellbox}{}
+rec f b 0 = b
+rec f b n = f (n-1) (rec f b (n-1))
+\end{haskellbox}
+
+(rec permette di definire facilmente funzioni il cui risultato dipende sia dal risultato del passo ricorsione precedente, che dal ``contatore''; per esempio, il fattoriale:
+\begin{haskellbox}{}
+    -- f prende il contatore e il risultato della ricorsione
+factorial n = rec (\cont res -> (cont + 1) * res) 1 n
+    -- fattoriale di n = n (ovvero contatore+1) * fattoriale (n-1) (passo prec)
+\end{haskellbox}
+)
         
         \item \textbf{Liste finite:} sulle liste l'operazione che costruisce l'omomorfismo "sostituendo" i costruttori della lista con operazioni su un altro tipo è la \code{foldr}. Rappresenta il principio di iterazione/ricorsione generalizzato per le liste:
     \begin{haskellbox}{}
@@ -1671,7 +1704,7 @@ L'insieme coinduttivo più interessante è quello delle liste infinite (o \textb
 
 Il principio di ricorsione sulle Stream si può definire tramite due funzionali:
 \begin{itemize}
-    \item \code{iterate}, che permette di definire una funzione $f: A \to Stream \ B$
+    \item \code{iterate}, che permette di definire una funzione \code{f :: a -> Stream b}
         \subitem data una funzione \code{f :: a -> b } ed un valore \code{x :: b}, permette di costruire uno stream in questo modo:
         \begin{haskellbox}{}
 iterate f x = x : iterate f (f x)
@@ -1686,6 +1719,38 @@ Conviene però avere un principio di ricorsione più generale: la cosiddetta \te
 unfold :: (b -> (a, b)) -> b -> Stream a
 unfold f y = x : unfold f y' where (x, y') = f y
 \end{haskellbox}
+
+Il funzionale \code{unfold} può essere visto come un \textbf{generatore infinito} regolato da una macchina a stati.
+
+Consideriamo la firma del suo tipo:
+\[ \code{unfold} :: (b \to (a, b)) \to b \to \text{Stream } a \]
+
+\begin{itemize}
+    \item \textbf{Il tipo $b$ (seme o stato interno)} rappresenta l'informazione corrente necessaria e sufficiente per calcolare il prossimo elemento dello stream.
+    \item \textbf{La funzione $f :: b \to (a, b)$ (generatore)} ``apre'' (da cui \textit{unfold}) lo stato attuale $y$ per produrre una coppia $(x, y')$, in cui:
+    \begin{itemize}
+        \item $x$ (di tipo $a$) è il \textbf{valore} effettivo che viene emesso in output ed entra a far parte dello Stream
+        \item $y'$ (di tipo $b$) è il \textbf{nuovo seme} che verrà riutilizzato come argomento al passo successivo della computazione
+    \end{itemize}
+\end{itemize}
+
+A ogni iterazione, il funzionale prende lo stato corrente, produce un elemento visibile all'esterno e aggiorna lo stato interno per la computazione futura, ``srotolando'' il seme iniziale all'infinito.
+
+\begin{gframe}{Produttività}
+Nelle strutture dati infinite, il concetto classico di \textit{terminazione} perde di significato (lo stream, per definizione, non deve mai finire). Al suo posto, si introduce il criterio di \textbf{produttività}:
+\begin{quote}
+    Una funzione co-ricorsiva si dice \textbf{produttiva} se è in grado di valutare una qualsiasi porzione finita del suo output (ad esempio l'elemento di testa) in un \textbf{tempo finito}.
+\end{quote}
+
+Nel codice di \code{unfold}, la produttività è garantita dal costruttore di lista (\code{:}). Poiché il costruttore si trova all'esterno della chiamata co-ricorsiva (\code{x : unfold f y'}), Haskell può istanziare immediatamente la testa \code{x} e congelare la computazione del resto dello stream (\code{unfold f y'}) sotto forma di \textit{thunk}, finché non sarà esplicitamente richiesta da una successiva operazione di accesso.
+\end{gframe}
+
+Possiamo ridefinire il funzionale \code{iterate} precedentemente analizzato come un caso particolare di co-ricorsione in cui lo stato interno e il tipo dell'elemento emesso coincidono ($a = b$):
+\begin{haskellbox}{}
+iterate :: (a -> a) -> a -> Stream a
+iterate f x = unfold (\s -> (s, f s)) x
+\end{haskellbox}
+In questo caso, il generatore prende lo stato \code{s}, lo restituisce come elemento corrente dello stream e applica \code{f s} per determinare il nuovo seme per il passo successivo.
 
 Se invece vogliamo considerare l'algebra che contiene la lista vuota, allora la massima co-algebra contiene anche le liste finite. In tal caso, possiamo definire il funzionale \code{unfoldLS}, che costruisce anche liste finite:
 \begin{haskellbox}{}
