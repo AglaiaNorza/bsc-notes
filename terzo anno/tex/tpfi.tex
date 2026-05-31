@@ -1656,7 +1656,7 @@ Nella teoria dei tipi e nella programmazione funzionale, le strutture dati posso
     \end{itemize}
 \end{defframe}
 
-\subsection{Insiemi induttivi}
+\subsection{Insiemi induttivi (e relativi funzionali)}
 \begin{gframe}{Approfondimento: lemma di Lambek}
         Se consideriamo l'algebra induttiva come un \textit{oggetto iniziale} nella Teoria delle Categorie, il principio di ricorsione in programmazione è l'incarnazione computazionale dell'\textbf{omomorfismo unico} definito dal Lemma di Lambek (vedi \href{https://raw.githubusercontent.com/AglaiaNorza/notes-ig/main/terzo%20anno/linguaggi%20di%20programmazione.pdf}{\underline{appunti del corso ``Linguaggi di programmazione''} })
     
@@ -1697,7 +1697,7 @@ iter f b (x:xs) = f x (iter f b xs)  -- corrisponde a foldr f b xs
     \end{haskellbox}
     \end{itemize}
 
-\subsection{Insiemi coinduttivi}
+\subsection{Insiemi coinduttivi (e relativi funzionali)}
 L'insieme coinduttivo che origina dai costruttori dei numeri naturali è formato dai naturali, più un \textbf{naturale infinito non-standard} $\omega = S^{\infty}$, ottenuto da infinite applicazioni del costruttore $S$.
 
 L'insieme coinduttivo più interessante è quello delle liste infinite (o \textbf{Stream}). Non ha senso definire funzioni per ricorsione su di esse, ma si possono sempre definire funzioni che creano Stream di cui, in tempo finito, si può accedere ad una porzione finita.
