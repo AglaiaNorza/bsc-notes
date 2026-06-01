@@ -34,7 +34,10 @@ notes["$latex/tpfi/tpfi.pdf"]="terzo anno/tpfi.pdf"
 notes["$latex/logmat/logmat.tex"]="terzo anno/tex/logica matematica.tex"
 notes["$latex/ldp/ldp.tex"]="terzo anno/tex/linguaggi di programmazione.tex"
 notes["$latex/ia/ia.tex"]="terzo anno/tex/intelligenza artificiale.tex"
-notes["$latex/tpfi/tpfi.tex"]="terzo anno/tex/tpfi.tex"
+notes["$latex/tpfi/tpfi.tex"]="terzo anno/tex/tpfi/tpfi.tex"
+notes["$latex/tpfi/1-le-basi.tex"]="terzo anno/tex/tpfi/1-le-basi.tex"
+notes["$latex/tpfi/2-lambda-calcolo.tex"]="terzo anno/tex/tpfi/2-lambda-calcolo.tex"
+notes["$latex/tpfi/3-temi-avanzati.tex"]="terzo anno/tex/tpfi/3-temi-avanzati.tex"
 
 for file in "${!notes[@]}"; do
     cp "$file" "$dest/${notes[$file]}" || { echo "$file failed"; exit 1; }
