@@ -1172,6 +1172,8 @@ class Functor t where
 \begin{center}
 \includegraphics[width=9cm]{assets/fmap_apply}
 \end{center}
+\vspace{-1em}
+(immagini prese da \href{https://www.adit.io/posts/2013-04-17-functors,_applicatives,_and_monads_in_pictures.html}{qui} !!)
 
 \begin{gframe}{Esempi}
     Alcuni esempi noti di istanze di funtori sono:
@@ -1477,6 +1479,7 @@ Come i funtori, anche gli applicatori hanno una serie di regole da rispettare:
         \subitem applicare \code{g} ad un valore \code{x} e poi ``impacchettare'' il risultato dà lo stesso esito che applicare la versione ``impacchettata'' di \code{g} alla versione ``impacchettata'' di \code{x}
     \item \textbf{non conta l'ordine} con cui si fa embedding nel contesto
         \subitem \code{f <*> pure y = pure (\textbackslash g -> g y) <*> f}
+        \subitem applicare una funzione nel contesto \code{f} a un valore puro \code{y} equivale a invertire i ruoli: passare \code{f} come argomento a una struttura ``impacchettata'' (una lambda che aspetta una funzione) che contiene già il valore \code{y}
     \item \textbf{composizione} di \code{<*>}
         \subitem \code{f <*> (g <*> x) = (pure (.) <*> f <*> g) <*> x}
         \subitem (forma di associatività per \code{<*>})
@@ -1551,6 +1554,10 @@ Molti aspetti della programmazione (come strutture dati mutabili e input/output)
 
 Alcuni linguaggi funzionali, come ML, introducono costrutti non funzionali come puntatori, eccezioni, ecc.; Haskell cerca un'integrazione basata su concetti matematici.
 
+\begin{center}
+\includegraphics[width=6cm]{assets/monad_just}
+\end{center}
+
 La classe \code{Monad} si può definire tramite gli applicativi in questo modo:
 \begin{haskellbox}{}
 class Applicative m => Monad m where
@@ -1566,7 +1573,7 @@ class Applicative m => Monad m where
         \end{itemize}
     \item \code{>>} è una versione semplificata del bind: mentre \code{>>=} prende il valore della prima computazione e lo passa ad una funzione, \code{>>} esegue la computazione, ne scarta il valore prodotto e passa direttamente alla seconda computazione (il suo tipo è infatti quello della seconda computazione - in una computazione sequenziale, l'ultima istruzione è quella che determina il valore finale)
         \begin{itemize}
-            \item \code{m >> f} è equivalente a \code{m >>= \_ -> f}
+            \item \code{m >> m'} è equivalente a \code{m >>= \_ -> m'}
             \item serve quindi quando si vogliono solo i side-effects ma non quello che viene ritornato (e.g. operazioni di scrittura)
             \item in ogni caso, anche se il valore di tipo \code{a} viene scartato, il contesto (effetto computazionale) di \code{m a} viene preservato e combinato con quello di \code{b}
         \end{itemize}
@@ -1622,8 +1629,15 @@ L'operatore \code {>>=} si comporta in questo modo:
 \begin{haskellbox}{}
 instance Monad Maybe where
     return x = Just x
+
+    (>>=) :: Maybe a -> (a -> Maybe b) -> Maybe b
     Nothing >>= _ = Nothing
     (Just x) >>= f = f x
+
+    -- se volessimo definire >> per casi (e non tramite >>)
+    (>>) :: Maybe a -> Maybe b -> Maybe b
+    Nothing  >> _ = Nothing
+    (Just _) >> m' = m'
 \end{haskellbox}
 
 \subsection{Monade State Transformer}
