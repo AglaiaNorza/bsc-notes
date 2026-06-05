@@ -214,6 +214,7 @@ Però, può lasciare molte sottoespressioni non valutate, occupando a volte molt
 
 Il teorema che ci assicura che la valutazione lazy sia corretta è il seguente:
 \begin{thmframe}{Teorema di confluenza [Church-Rosser]}{}
+    \label{thm:church_rosser}
     Se un'espressione può essere ridotta in due modi diversi arrivando a risultati diversi, esiste sempre una ``strada comune'' per farli ricongiungere.
 
     Formalmente: se $M \to N$ e $M \to N'$, allora esiste un termine $P$ tale che $N \to P$ e $N' \to P$.
@@ -1755,6 +1756,34 @@ do {x <- p; stmts} = p >>= \x -> do {stmts}
 
 \textbf{Nota bene:} un blocco \code{do} non può terminare con un comando di estrazione (\code{x <- p}), ma deve obbligatoriamente terminare con un'azione pura o monadica. Ad esempio, \code{do {x <- getChar}} non è un'espressione valida.
 
+\newpage
+\begin{gframe}{Esempio: Maybe}
+Consideriamo una funzione che estrae e somma due valori opzionali:
+
+\begin{haskellbox}{}
+sommaMaybe :: Maybe Int -> Maybe Int -> Maybe Int
+sommaMaybe mx my = do
+    x <- mx
+    y <- my
+    return (x + y)
+\end{haskellbox}
+
+Il compilatore traduce il blocco srotolando i binding in funzioni lambda concatenate tramite l'operatore \code{>>=}:
+
+\begin{haskellbox}{}
+sommaMaybe :: Maybe Int -> Maybe Int -> Maybe Int
+sommaMaybe mx my = mx >>= \x ->
+                   my >>= \y ->
+                   return (x + y)
+\end{haskellbox}
+
+Grazie alla definizione di \code{>>=} per il tipo \code{Maybe} (per cui \code{Nothing >>= \_ = Nothing}):
+\begin{itemize}
+    \item se sia \code{mx} che \code{my} contengono un valore (es. \code{Just 3} e \code{Just 5}), i valori \code{3} e \code{5} vengono estratti, legati a \code{x} e \code{y}, e il risultato finale sarà \code{Just 8}
+    \item se uno qualsiasi dei due argomenti è \code{Nothing} (es. \code{mx = Nothing}), l'intera computazione si interrompe immediatamente e restituisce \code{Nothing}, senza che la lambda successiva o l'operazione di somma vengano valutate
+\end{itemize}
+
+\end{gframe}
 
 \subsubsection{Esempio Pratico: Tree Relabeling}
 Per comprendere meglio il funzionamento pratico della monade \code{ST}, analizziamo il problema del Relabeling di un albero binario. L'obiettivo è prendere un albero ed etichettare ogni sua foglia progressivamente con un numero intero.
@@ -1865,7 +1894,7 @@ Si utilizza quindi una Monade e le espressioni del tipo IO sono dette \textbf{ac
 type IO = World -> World
     
 -- in realtà, un'azione IO restituisce anche un valore:
-type IO = World -> (a, World)
+type IO a = World -> (a, World)
 \end{haskellbox}
 
 La definizione del tipo IO è nascosta al programmatore, in modo da impedirgli di manipolare direttamente \code{World}.
@@ -1912,6 +1941,7 @@ getLine = getChar >>= \x ->
             else getLine >>= \xs ->
                 return (x:xs)
 \end{haskellbox}
+
 \begin{itemize}
     \item \code{getChar} legge un carattere, che viene passato (sequenzialmente da \code{>>=}) alla funzione lambda che controlla se il carattere letto è il newline - se sì, termina la lettura; altrimenti, richiama la funzione ricorsivamente e ritorna il primo carattere letto concatenato al risultato della chiamata
 \end{itemize}
@@ -1921,11 +1951,22 @@ getLine = getChar >>= \x ->
     \item se \code{x} corrisponde al carattere di newline, la lettura termina e viene restituita una lista vuota \code{[]} inserita nel contesto monadico tramite \code{return};
     \item altrimenti, \code{getLine} viene chiamata ricorsivamente per leggere i caratteri rimanenti. Il secondo operatore \code{>>=} estrae la stringa parziale risultante da questa chiamata, legandola alla variabile \code{xs}, e infinre \code{return (x:xs)} ricompone sequenzialmente la stringa completa posizionando il carattere iniziale in testa alla lista;
 \end{itemize}
+
+in do notation:
+\begin{haskellbox}{}
+getLine = do
+    x <- getChar
+    if x == '\n' 
+        then return []
+        else do
+            y <- getLine
+            return (x:y)
+\end{haskellbox}
 \end{gframe}
 
 \subsection{Strictness dell'I/O}
 
-Anche con le operazioni IO si può usare la \code{do} notation.
+Anche con le operazioni IO si può usare la \code{do} notation:
 \begin{haskellbox}{}
 do
   v1 <- a1
@@ -1944,7 +1985,7 @@ minus = x - y
     y = runIO readInt
 \end{haskellbox}
 
-Questo programma sarebbe problematico perché violerebbe il \textbf{Teorema di Church-Rosser} (o di confluenza) che vale per i linguaggi funzionali puri. Il teorema garantisce che l'ordine con cui il compilatore decide di valutare le sotto-espressioni non influenzi mai il risultato finale.
+Questo programma sarebbe problematico perché violerebbe il \textbf{Teorema di Church-Rosser} (o di confluenza) (vedi p\pageref{thm:church_rosser}) che vale per i linguaggi funzionali puri. Il teorema garantisce che l'ordine con cui il compilatore decide di valutare le sotto-espressioni non influenzi mai il risultato finale.
 
 Se dobbiamo calcolare \code{minus x - y}, in una funzione pura il compilatore può calcolare \code{x} e \code{y} nell'ordine in cui preferisce (il risultato sarà identico).
 
@@ -2058,6 +2099,8 @@ I metodi fondamentali su \code{STArray} sono:
 (Il tipo \code{STArray} si trova nel modulo \code{Data.Array.ST}, mentre i metodi si trovano in\\
 \code{Data.Array.MArray})
 
+\newpage
+
 \section{Kleisli composition (composizione monadica)}
 Nel mondo della programmazione funzionale standard, se abbiamo due funzioni pure \code{f :: a -> b} e \code{g :: b -> c}, possiamo comporle facilmente utilizzando \code{(.)}.
 
@@ -2099,6 +2142,14 @@ Il tipo di \code{>=>} si specializza quindi in questo modo:
 Osservando questa firma, notiamo che il primo argomento è uina funzione \code{mb -> mb}. La funzione più semplice che ha questo tipo è l'identità.
 
 Se passiamo quindi l'identità a \code{>=>}, otteniamo una funzione parzialmente applicata \code{id >=>}, che accetta una funzione \code{f :: b -> mc} e restituirà una nuova funzione \code{mb -> mc}.
+
+Se osserviamo il bind, possiamo rinominare i suoi tipi in questo modo:
+\begin{haskellbox}{}
+(>>=) :: Monad m => m b -> (b -> m c) -> m c  
+-- ricordiamo >=> :: (m b -> m b) -> (b -> m c) -> (m b -> m c)
+\end{haskellbox}
+
+L'unificazione finale avviene tramite l'applicazione. Se abbiamo a disposizione un valore monadico \code{p :: m b}, ci basta "darlo in pasto" alla funzione appena creata da \code{>=>}. L'applicazione \code{(id >=> f) p} consumerà la funzione e restituirà esattamente il valore \code{m c} (come il bind). 
 
 Se quindi abbiamo un valore monadico \code{p :: mb} e una funzione \code{f :: b -> mc}, possiamo scrivere:
 \begin{haskellbox}{}
@@ -2155,7 +2206,6 @@ L'operatore di Kleisli permette invece di ridefinire le Monad Laws in maniera co
     \item \code{(f >=> g) >=> h = f >=> (g >=> h)}
 \end{itemize}
 \end{gframe}
-
 
 \section{Functor e Applicative come Monad}
 Fino ad ora abbiamo visto le classi di tipi presentate in ordine crescente di complessità (da \code{Functor} a \code{Monad}). È tuttavia possibile compiere il percorso opposto: se un tipo istanzia la classe più potente (\code{Monad}), le operazioni delle classi superiori possono essere ridefinite in modo del tutto naturale.
