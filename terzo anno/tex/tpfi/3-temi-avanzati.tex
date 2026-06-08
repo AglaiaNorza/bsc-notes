@@ -734,7 +734,7 @@ L'ordine si estende naturalmente ai tipi composti. L'idea è che una struttura �
 Per le liste si ha:
 \begin{itemize}
     \item $\bot \apprord xs$
-    \item $[ \ ] \apprord xs \iff xs = [ \ ] \land (x:xs) \not\apprord [ \ ]$ (una lista vuota approssima un'altra lista solo se anche essa è vuota; una lista non vuota non può mai approssimare una lista vuota)
+    \item $[ \ ] \apprord xs \iff xs = [ \ ]$ e $(x:xs) \not\apprord [ \ ]$ (una lista vuota approssima un'altra lista solo se anche essa è vuota; una lista non vuota non può mai approssimare una lista vuota)
     \item $x:xs \apprord y:ys \iff x \apprord y \land xs \apprord ys$
 \end{itemize}
 
@@ -2289,6 +2289,14 @@ Le classi in Haskell permettono forme di programmazione generica basata sul fatt
 \end{itemize}
 
 Il generic programming in Haskell fonde il polimorfismo parametrico (funzioni che lavorano con tipi generici) con il polimorfismo ad-hoc (fornito dalle type classes). Si può scrivere un algoritmo una sola volta ed applicarlo a qualsiasi tipo che implementi l'interfaccia richiesta.
+
+\begin{gframe}{Differenza tra polimorfismo parametrico e ``ad-hoc'' (di type classes)}
+    Il polimormifismo parametrico si ha quando una funzione si comporta \textbf{nello stesso modo} indipendentemente dai tipi dai tipi di dati che riceve.
+
+    Il polimorfismo delle type classes si ha quando una funzione ha lo \textbf{stesso nome}, ma \textbf{si comporta in modo diverso} a seconda del tipo di dati su cui opera.
+\end{gframe}
+
+(La differenza tra polimorfismo parametrico e ad-)
 
 \subsection{\code{mapM} e \code{filterM}}
 Un esempio è la funzione \code{mapM}, una generalizzazione monadica di \code{map} (\code{map} applica una funzione pura \code{a -> b} agli elementi di una lista, mentre \code{mapM} applica una funzione che genera un tipo monadico \code{a -> m b}).
