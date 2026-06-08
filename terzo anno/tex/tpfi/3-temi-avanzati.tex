@@ -2296,7 +2296,10 @@ Il generic programming in Haskell fonde il polimorfismo parametrico (funzioni ch
     Il polimorfismo delle type classes si ha quando una funzione ha lo \textbf{stesso nome}, ma \textbf{si comporta in modo diverso} a seconda del tipo di dati su cui opera.
 \end{gframe}
 
-(La differenza tra polimorfismo parametrico e ad-)
+(La differenza tra polimorfismo parametrico e ad-hoc è quindi che il primo ha un'unica implementazione valida per tutti i tipi, mentre il secondo richiede implementazioni multiple e specifiche per ogni tipo supportato
+
+es. calcolare la lunghezza di una lista (polimorfismo parametrico, non conta il tipo degli elementi), vs calcolare il prodotto o la somma (il modo di calcolarli cambia in base al tipo)
+)
 
 \subsection{\code{mapM} e \code{filterM}}
 Un esempio è la funzione \code{mapM}, una generalizzazione monadica di \code{map} (\code{map} applica una funzione pura \code{a -> b} agli elementi di una lista, mentre \code{mapM} applica una funzione che genera un tipo monadico \code{a -> m b}).
@@ -2486,4 +2489,68 @@ traverse g (Node l r) = pure Node <*> traverse g l <*> traverse g r
 
 \end{gframe}
 
+\section{Sintesi: Le tre definizioni di Monade}
 
+Nel corso di questi appunti abbiamo esplorato diverse sfaccettature delle monadi. In Haskell (e nella programmazione funzionale in generale), una monade può essere definita in tre modi equivalenti. Ciascuna definizione enfatizza un aspetto concettuale diverso, ma tutte sono interscambiabili.
+
+\subsection{1. La definizione standard (Bind)}
+È la definizione usata nativamente da Haskell nella classe \code{Monad}. Si concentra sull'idea di \textbf{sequenzializzare computazioni} che producono effetti collaterali, dove il passo successivo dipende dal risultato del passo precedente.
+
+\begin{haskellbox}{Definizione basata su bind}
+class Applicative m => Monad m where
+    return :: a -> m a
+    (>>=)  :: m a -> (a -> m b) -> m b
+\end{haskellbox}
+
+\textbf{Le Monad Laws (Bind):}
+\begin{enumerate}
+    \item \textit{Identità sinistra:} \code{return a >>= f = f a}
+    \item \textit{Identità destra:} \code{m >>= return = m}
+    \item \textit{Associatività:} \code{(m >>= f) >>= g = m >>= (\textbackslash x -> f x >>= g)}
+\end{enumerate}
+
+\subsection{2. La definizione di Kleisli (Composizione)}
+Questa definizione sposta l'attenzione dai \textit{valori} monadici (\code{m a}) alle \textit{funzioni} monadiche (le frecce di Kleisli \code{a -> m b}). In quest'ottica, una monade è semplicemente un modo per ridefinire la composizione di funzioni standard \code{(.)} affinché supporti gli effetti collaterali.
+
+\begin{haskellbox}{Definizione basata sulle frecce di Kleisli}
+return :: a -> m a
+(>=>)  :: (a -> m b) -> (b -> m c) -> (a -> m c)
+\end{haskellbox}
+
+\textbf{Le Monad Laws (Kleisli):}
+Sotto questa lente, le leggi diventano identiche a quelle di un \textbf{monoide} (vedi p.\pageref{monoid}), dove l'operazione binaria è \code{>=>} e l'elemento neutro è \code{return}:
+\begin{enumerate}
+    \item \textit{Identità sinistra:} \code{return >=> f = f}
+    \item \textit{Identità destra:} \code{f >=> return = f}
+    \item \textit{Associatività:} \code{(f >=> g) >=> h = f >=> (g >=> h)}
+\end{enumerate}
+
+\subsection{3. La definizione Categoriale (Join)}
+Questa è la definizione più vicina alla matematica. Invece di usare il bind, definisce la monade come un \code{Functor} potenziato dalla capacità di \textbf{appiattire} contesti annidati. È l'approccio preferito nella Teoria delle Categorie.
+
+\begin{haskellbox}{Definizione basata su join}
+fmap   :: (a -> b) -> m a -> m b   -- (dal Functor)
+return :: a -> m a                 -- (Unità)
+join   :: m (m a) -> m a           -- (Moltiplicazione)
+\end{haskellbox}
+
+\textbf{Le Monad Laws (Join):}
+\begin{enumerate}
+    \item \textit{Identità sinistra:} \code{join . return = id} \\ (Inserire un valore nel contesto e poi appiattirlo non fa nulla)
+    \item \textit{Identità destra:} \code{join . fmap return = id} \\ (Creare un contesto interno e poi appiattirlo non fa nulla)
+    \item \textit{Associatività:} \code{join . join = join . fmap join} \\ (Appiattire prima i gusci esterni o prima i gusci interni in \code{m (m (m a))} porta allo stesso risultato)
+\end{enumerate}
+
+\begin{gframe}{Approfondimento: ``una monade è solo un monoide nella categoria degli endofuntori''}
+Questa celebre citazione (attribuita a Saunders Mac Lane) riassume l'essenza matematica delle monadi. Per capirla, facciamo un parallelo tra un monoide classico e una monade:
+
+\begin{itemize}
+    \item \textbf{Categoria di base:} invece di lavorare in una categoria di insiemi e valori (come \code{Int} o \code{Bool}), lavoriamo nella \textbf{categoria degli endofuntori}. Gli "oggetti" di questa categoria non sono tipi, ma i \textit{funtori stessi} (es. \code{[]}, \code{Maybe}, \code{IO}) che mappano la categoria (Hask) in se stessa.
+    
+    \item \textbf{Moltiplicazione ($\mu$):} in un monoide su valori interi, la moltiplicazione prende due elementi e ne restituisce uno (\code{Int -> Int -> Int}). Nella categoria degli endofuntori, la "moltiplicazione" prende l'applicazione successiva dello stesso funtore due volte e la riduce a una sola. Questa è esattamente la trasformazione naturale \textbf{\code{join :: m (m a) -> m a}} (spesso indicata con $\mu$).
+    
+    \item \textbf{Unità ($\eta$):} in un monoide classico, l'elemento neutro (es. $1$ per il prodotto) si "inserisce" nell'operazione senza alterarla. Per gli endofuntori, l'unità è una trasformazione naturale dal funtore identità (che non fa nulla) al nostro funtore \code{m}. Questa è esattamente \textbf{\code{return :: a -> m a}} (spesso indicata con $\eta$).
+\end{itemize}
+
+Le tre leggi della definizione categoriale (basata su \code{join} e \code{return}) sono la traduzione esatta delle leggi di associatività e dell'elemento neutro del monoide, sollevate al livello dei funtori. 
+\end{gframe}
