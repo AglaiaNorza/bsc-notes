@@ -2246,6 +2246,13 @@ join mmx = do
 \end{haskellbox}
 (infatti si ha che \code{do \{ x <- mx; return x \}} è equivalente a \code{mx} (prima Monad Law, p.\pageref{monad_laws}))
 
+Definito senza do notation:
+\begin{haskellbox}{}
+-- join mm = mm >>= id
+join :: Monad m => m (m a) -> m a
+join = (>>= id)
+\end{haskellbox}
+
 \subsection{Definizione di bind tramite join}
     Nella Teoria delle Categorie, una monade non è definita tramite bind, ma è descritta come un funtore equipaggiato con due trasformazioni: un'unità (\code{return}) e una moltiplicazione (\code{join}). 
 
@@ -2489,7 +2496,7 @@ traverse g (Node l r) = pure Node <*> traverse g l <*> traverse g r
 
 \end{gframe}
 
-\section{Sintesi: Le tre definizioni di Monade}
+\section{Sintesi: le tre definizioni di Monade}
 
 Nel corso di questi appunti abbiamo esplorato diverse sfaccettature delle monadi. In Haskell (e nella programmazione funzionale in generale), una monade può essere definita in tre modi equivalenti. Ciascuna definizione enfatizza un aspetto concettuale diverso, ma tutte sono interscambiabili.
 
