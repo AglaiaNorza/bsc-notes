@@ -44,8 +44,8 @@ Il $\lambda$-calcolo puro non ha tipi di dato predefiniti: tutto (booleani, nume
         \subitem \textbf{True ($K$):} $K \equiv \lambda x y. x$ (prende due argomenti e restituisce il primo)
         \subitem \textbf{False ($O$):} $O \equiv \lambda x y. y$ (prende due argomenti e restituisce il secondo)
     \item \textbf{If-Then-Else:} grazie alla definizione dei booleani, la struttura condizionale è codificata come un'applicazione: $if\ x\ then\ M\ else\ N \equiv x M N$. Se $x$ è True ($K$) selezionerà $M$, se è False ($O$) selezionerà $N$.
-    \item \textbf{Compositore ($S$):} $S \equiv \lambda x y z. x z (y z)$ (prende due funzioni, $x$ e $y$, e applica $y$ a $z$ e $x$ al risultato dell'appplicazione, ottendendo $x . y$)
-        \subitem (si può dimostrare che $S K K \approx I$).
+    \item \textbf{Compositore con condivisione ($S$):} $S \equiv \lambda x y z. x z (y z)$ - distribuisce l'argomento $z$ sia alla funzione $x$ che alla funzione $y$
+\subitem $S K K \approx I$: applicando un termine generico $w$, si ha $(S K K) w \rightarrow K w (K w)$. Poiché $K w$ restituisce la funzione costante che ignora il secondo argomento, $K w (K w) \rightarrow w$. Di conseguenza $(S K K) w \rightarrow w$, che equivale a $I w$.
     \item \textbf{Duplicatori e divergenza:} 
         \subitem $\omega \equiv \lambda x.xx$ (auto-applicazione)
         \subitem $\Omega \equiv (\lambda x.xx) (\lambda x.xx)$, ovvero $\omega \omega \rightarrow \omega \omega \rightarrow \dots$ rappresenta la \textbf{funzione indefinita}, il loop infinito (non tipabile)

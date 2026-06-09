@@ -1,0 +1,126 @@
+\chapter{Sistema dei Tipi di Haskell}
+Per più informazioni, vedi
+
+Cominciamo con il dare una versione astratta dei tipi di Haskell, omettendo per il momento le classi di tipi e considerando solo il costruttore freccia. 
+
+Useremo le seguenti metavariabili:
+\begin{itemize}
+    \item $\tau$ per indicare i \textbf{monotipi} 
+    \item $\alpha, \beta, \gamma, \dots$ per indicare le \textbf{variabili di tipo} 
+    \item $\sigma$ per indicare gli \textbf{schemi di tipo} (o tipi polimorfi / politipi) 
+\end{itemize}
+
+La sintassi è quindi definita come:
+\begin{align*}
+    \tau &::= \text{int} \mid \text{bool} \mid \dots \quad \text{(tipi base)} \\ 
+         &\mid \alpha \quad \text{(variabili di tipo)} \\ 
+         &\mid \tau_1 \rightarrow \tau_2 \quad \text{(tipi freccia)} 
+\end{align*}
+\begin{align*}
+    \sigma &::= \tau \quad \text{(monotipi)} \\ 
+           &\mid \forall \alpha . \sigma \quad \text{(tipi polimorfi)} 
+\end{align*}
+
+\begin{gframe}{Limitazioni strutturali}
+    Osserviamo che non è possibile annidare il quantificatore $\forall$ all'interno di un tipo freccia $\rightarrow$. 
+    Quindi, un tipo come $(\forall\alpha.\alpha\rightarrow\alpha)\rightarrow(\forall\alpha.\alpha\rightarrow\alpha)$ non appartiene a questa sintassi. 
+    Se volessimo esprimere tipi di questo genere (noti come tipi di rank-2 o superiore), dovremmo rimuovere la distinzione sintattica tra monotipi e schemi di tipo, o aggiungere regole come $\sigma ::= \sigma_1 \rightarrow \sigma_2$ (sistema dei tipi del lambda calcolo polimorfo).
+\end{gframe}
+
+\section{Tipi di ML (frammento di Haskell)}
+Per formalizzare le regole di tipo, ci preoccuperemo di dare un tipo a un frammento minimale di Haskell. 
+Questo mini-linguaggio è sostanzialmente un $\lambda$-calcolo tipato arricchito dal costrutto \code{let} e dall'operatore \code{fix}: 
+
+$$ M ::= x \mid \lambda x.M \mid (M \ N) \mid \text{let } x=N \text{ in } M \mid \text{fix } x.M $$ 
+
+\begin{itemize}
+    \item \textbf{\code{fix}:} poiché il combinatore di punto fisso puro (come $Y$) non è tipabile, si introduce \code{fix x. M} per permettere le definizioni ricorsive generali. 
+\end{itemize}
+
+I giudizi del sistema dei tipi avranno la forma $\Gamma \vdash M : \sigma$, dove $\Gamma$ è un \textbf{ambiente} (una funzione finita da variabili a tipi) che assegna un tipo alle variabili libere del termine $M$. 
+
+\section{Sostituzioni, Unificazioni e Generalità}
+\begin{itemize}
+    \item \textbf{Sostituzione:} una funzione finita $\theta$ che associa tipi a variabili di tipo. 
+    Applicare una sostituzione $\theta$ a un tipo $\tau$ (notazione $\tau\theta$) significa sostituire tutte le variabili $\alpha \in dom(\theta)$ presenti in $\tau$ con il rispettivo $\theta(\alpha)$. 
+    \subitem \textit{Esempio:} se $\theta = \{(\alpha, \beta \rightarrow \beta)\}$ e $\tau = \alpha \rightarrow \alpha$, allora $\tau\theta = (\beta \rightarrow \beta) \rightarrow (\beta \rightarrow \beta)$. 
+    
+    \item \textbf{Unificazione:} due tipi $\tau_1$ e $\tau_2$ si dicono \textit{unificabili} se esiste una sostituzione $\theta$ tale per cui $\tau_1\theta = \tau_2\theta$. 
+    \subitem \textit{Esempio:} $\tau_1 = \text{int} \rightarrow \beta$ e $\tau_2 = \alpha \rightarrow \text{float}$ unificano applicando $\theta = \{(\alpha, \text{int}), (\beta, \text{float})\}$. 
+    
+    \item \textbf{Generalità:} diciamo che $\tau_1$ è \textit{più generale} di $\tau_2$ ($\tau_1 \le \tau_2$) se esiste una sostituzione $\theta$ tale che $\tau_1\theta = \tau_2$. 
+    \subitem \textit{Esempio:} $\alpha \rightarrow \alpha$ è più generale di $(\beta \rightarrow \beta) \rightarrow (\beta \rightarrow \beta)$. 
+\end{itemize}
+
+\section{Sistema di Derivazione dei Tipi}
+Vediamo le regole base per stabilire la correttezza di un tipo, definite per induzione sulla struttura sintattica. 
+Vedremo l'ambiente $\Gamma$ come un insieme di associazioni variabili/tipo nella forma $(x : \tau)$. 
+
+\begin{itemize}
+    \item \textbf{Variabili (VAR):} 
+    $$ \frac{(x:\sigma)\in\Gamma}{\Gamma\vdash x:\sigma} $$
+    
+    \item \textbf{Specializzazione (SPEC):} applichiamo questa regola ogni qual volta usiamo una funzione polimorfa passandole dei parametri. 
+    Il tipo generale viene specializzato sostituendo le variabili di tipo. 
+    $$ \frac{\Gamma\vdash M:\sigma \quad \sigma\le\sigma'}{\Gamma\vdash M:\sigma'} $$ 
+    
+    \item \textbf{Generalizzazione (GEN):} questa regola si applica per generalizzare le variabili di tipo che \textit{non} occorrono libere nei tipi definiti nell'ambiente $\Gamma$. 
+    $$ \frac{\Gamma\vdash M:\sigma \quad \alpha\notin \text{free}(\Gamma)}{\Gamma\vdash M:\forall\alpha.\sigma} $$ 
+    \subitem \textit{Nota:} La condizione $\alpha\notin \text{free}(\Gamma)$ è essenziale per garantire la coerenza. 
+    Senza di essa, potremmo tipare un termine in modo inconsistente, arrivando per assurdo a derivare tipi insensati. 
+
+    \item \textbf{Astrazione (ABS):} 
+    $$ \frac{\Gamma\cup\{x:\tau_1\}\vdash M:\tau_2}{\Gamma\vdash\lambda x.M:\tau_1\rightarrow\tau_2} $$
+    
+    \item \textbf{Ricorsione / Punto Fisso (FIX):} 
+    $$ \frac{\Gamma\cup\{x:\tau\}\vdash M:\tau}{\Gamma\vdash \text{fix } x.M:\tau} $$
+
+    \item \textbf{Applicazione (APP):} 
+    $$ \frac{\Gamma\vdash M:\tau_1\rightarrow\tau_2 \quad \Gamma\vdash N:\tau_1}{\Gamma\vdash (M \ N):\tau_2} $$
+\end{itemize}
+
+\begin{gframe}{Monotipi nell'applicazione}
+    Le regole ABS, FIX e APP si applicano strettamente a \textbf{monotipi} ($\tau$). 
+    Se occorre generalizzare o applicare un politipo ($\sigma$), è necessario prima specializzarlo tramite la regola SPEC. 
+    Limitare l'astrazione e l'applicazione ai monotipi impedisce di tipare termini problematici come $\lambda x.xx$: nello scope di un'astrazione, la variabile $x$ deve avere un unico tipo fissato $\tau$, impedendo di trattarla simultaneamente come funzione e come argomento di sé stessa. 
+\end{gframe}
+
+\begin{itemize}
+    \item \textbf{Let Binding (LET):} 
+    $$ \frac{\Gamma\vdash N:\sigma_1 \quad \Gamma,\{x:\sigma_1\}\vdash M:\sigma_2}{\Gamma\vdash \text{let } x=N \text{ in } M:\sigma_2} $$
+\end{itemize}
+
+Benché la semantica di \code{let} e dell'applicazione siano simili, il \code{let} ammette i \textbf{politipi} ($\sigma_1$), limitando il polimorfismo alla struttura in modo sicuro. 
+Di conseguenza, il termine \code{let $x=\lambda y.y$ in $x \ x$} risulta perfettamente tipabile, mentre la sua espansione diretta $(\lambda x.xx)(\lambda y.y)$ fallisce il controllo dei tipi. 
+
+\section{Esempi di Tipaggio}
+
+\subsection{Auto-applicazione dell'identità ($I \ I$)}
+Possiamo tipare l'applicazione dell'identità a sé stessa ($I \ I$, dove $I \equiv \lambda x.x$) in questo modo: 
+\begin{enumerate}
+    \item Rendo generiche le variabili: la prima $I$ viene tipata con $\alpha'\rightarrow\alpha'$ e la seconda con $\alpha''\rightarrow\alpha''$. 
+    \item Trovo la sostituzione $\theta$ per specializzare i tipi: unifico il dominio della prima $I$ con il tipo della seconda $I$. Pongo quindi $\theta(\alpha') = \beta\rightarrow\beta$ e $\theta(\alpha'') = \beta\rightarrow\beta$. 
+    \item Ora la prima $I$ è specializzata come $(\beta\rightarrow\beta)\rightarrow(\beta\rightarrow\beta)$ e la seconda come $\beta\rightarrow\beta$. 
+    \item Il dominio della prima coincide esattamente con il tipo della seconda. La regola APP restituisce il codominio: $\beta\rightarrow\beta$. 
+\end{enumerate}
+
+\subsection{Il termine $S \ K \ K$}
+Analizziamo il tipaggio del termine combinatorio $S \ K \ K$, equivalente in Haskell al $\lambda$-termine omonimo. 
+Consideriamo i tipi delle funzioni in gioco (rinominando le variabili per non creare conflitti): 
+\begin{itemize}
+    \item $S :: (t_2 \rightarrow t_1 \rightarrow t) \rightarrow (t_2 \rightarrow t_1) \rightarrow (t_2 \rightarrow t)$ 
+    \item $K_1 :: a' \rightarrow b' \rightarrow a'$ 
+    \item $K_2 :: a'' \rightarrow b'' \rightarrow a''$ 
+\end{itemize}
+
+Dobbiamo unificare i parametri di $S$ con $K_1$ e $K_2$:
+\begin{enumerate}
+    \item Unifico il primo parametro di $S$, $(t_2 \rightarrow t_1 \rightarrow t)$, con il tipo di $K_1$, $a' \rightarrow (b' \rightarrow a')$. 
+    Ricavo la prima sostituzione: $\theta(t_2) = \theta(t) = \theta(a') = u_1$ e $\theta(t_1) = \theta(b') = u_2$. 
+    \item Unifico il secondo parametro di $S$, $(t_2 \rightarrow t_1)$, con il tipo di $K_2$, $a'' \rightarrow (b'' \rightarrow a'')$. 
+    Poiché $\theta(t_2) = u_1$, deve valere $a'' = u_1$. 
+    Poiché $\theta(t_1) = u_2$, deve valere $u_2 = b'' \rightarrow a''$, cioè $u_2 = b'' \rightarrow u_1$. 
+    \item L'applicazione finale restituisce il codominio di $S$, ovvero $(t_2 \rightarrow t)$. 
+    Applicando le sostituzioni composte ottenute ($\theta(t_2)=u_1$ e $\theta(t)=u_1$), otteniamo come tipo risultante $u_1 \rightarrow u_1$. 
+    Questo conferma che $S \ K \ K$ ha lo stesso comportamento e tipo della funzione identità $I$. 
+\end{enumerate}
