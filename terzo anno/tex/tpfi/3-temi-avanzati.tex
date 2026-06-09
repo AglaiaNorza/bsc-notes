@@ -2561,3 +2561,73 @@ Questa celebre citazione (attribuita a Saunders Mac Lane) riassume l'essenza mat
 
 Le tre leggi della definizione categoriale (basata su \code{join} e \code{return}) sono la traduzione esatta delle leggi di associatività e dell'elemento neutro del monoide, sollevate al livello dei funtori. 
 \end{gframe}
+
+
+\section{Approfondimento: visione category-theoretic di Funtori e Applicativi}
+Il contesto matematico in cui ci muoviamo nella programmazione funzionale è una categoria (generalmente assimilabile a $\mathbf{Set}$, ma nel nostro caso chiamata informalmente $\mathbf{Hask}$) in cui:
+\begin{itemize}
+    \item gli \textbf{oggetti} sono i tipi di dato (\code{Int}, \code{String}, \code{Bool}, ecc.)
+    \item i \textbf{morfismi} (le frecce) sono le funzioni pure tra questi tipi (es. \code{Int -> String})
+\end{itemize}
+
+\subsection{Funtori: Endofuntori che preservano la forma}
+
+\begin{defframe}{Endofuntore}{}
+In teoria delle categorie, un Funtore mappa oggetti e morfismi da una categoria a un'altra preservandone la struttura. In Haskell, mappiamo la categoria dei tipi in sé stessa. Parliamo quindi di \textbf{Endofuntori}: $F : \mathbf{Hask} \to \mathbf{Hask}$.
+\end{defframe}
+
+Un Endofuntore è quindi composto da due parti:
+\begin{enumerate}
+    \item \textbf{Mappatura sugli oggetti:} un costruttore di tipo che eleva un tipo $A$ a un tipo contestualizzato $F(A)$ (es. da \code{Int} a \code{Maybe Int}).
+    \item \textbf{Mappatura sui morfismi:} la funzione \code{fmap}, che eleva una funzione $f : A \to B$ a una funzione nel contesto $F(f) : F(A) \to F(B)$.
+\end{enumerate}
+
+Le \textit{Functor Laws} (\code{fmap id = id} e \code{fmap (f . g) = fmap f . fmap g}) sono la trasposizione degli assiomi dei funtori. Dal punto di vista pratico, garantiscono che l'applicazione del funtore modifichi esclusivamente i valori interni, lasciando la struttura o la "forma" del contesto (es. la lunghezza di una lista) inalterata.
+
+\subsection{Applicativi: Funtori Monoidali Lax}
+
+Il limite dei funtori base è l'incapacità di applicare funzioni a più argomenti quando questi sono tutti racchiusi in contesti indipendenti. Categorialmente, un Applicativo risolve questo problema comportandosi come un \textbf{Funtore Monoidale Lax}.
+
+Per capire cosa significhi, dobbiamo prima definire l'ambiente in cui opera.
+
+\begin{defframe}{Categoria Monoidale}{}
+Una categoria monoidale è una categoria dotata di una struttura che permette di "fondere" due oggetti. Richiede:
+\begin{itemize}
+    \item Un'operazione di \textbf{prodotto tensoriale} ($\otimes$) - in $\mathbf{Hask}$, questo è il prodotto cartesiano, ovvero le tuple \code{(A, B)}.
+    \item Un \textbf{oggetto unità} ($I$) come elemento neutro - in $\mathbf{Hask}$, questo è il tipo unitario \code{()} (\textit{Unit}).
+\end{itemize}
+\end{defframe}
+
+Un Funtore Monoidale è un funtore che si muove tra due categorie monoidali e ne "preserva" il prodotto tensoriale e l'unità. Ci chiediamo quindi come il contesto $F$ si comporti rispetto alla fusione dei tipi.
+
+\begin{gframe}{"Lax"?}
+    La classificazione di un Funtore Monoidale dipende dalla rigidità con cui preserva la struttura:
+    \begin{itemize}
+        \item \textbf{Strict:} le strutture sono identiche $F(A \otimes B) = F(A) \otimes F(B)$
+        \item \textbf{Strong:} esiste un isomorfismo (invertibile) $F(A \otimes B) \cong F(A) \otimes F(B)$
+        \item \textbf{Lax (Rilassato):} esistono solo morfismi direzionali (non invertibili); possiamo combinare i contesti, ma non è garantito poterli sempre separare di nuovo.
+    \end{itemize}
+    Nel nostro caso, che sia \textbf{Lax} è fondamentale. Se avessimo due \code{Maybe}, possiamo unire \code{Just 3} e \code{Just 5} in \code{Just (3,5)}. Ma se avessimo un \code{Nothing}, non potremmo "spacchettarlo" a ritroso in due contesti separati senza inventare informazione.
+\end{gframe}
+
+Un Funtore Monoidale Lax è definito da due mappe che in Haskell si traducono nelle basi della classe \code{Applicative}:
+
+\begin{itemize}
+    \item \textbf{Mappa dell'unità ($\eta : I \to F(I)$):} trasporta l'elemento neutro nel contesto. Esteso a qualsiasi tipo tramite la funtorialità, diventa l'operatore che inietta un valore puro nel contesto minimo possibile.
+\begin{haskellbox}{}
+pure :: a -> f a
+\end{haskellbox}
+
+    \item \textbf{Mappa del tensore ($\phi : F(A) \times F(B) \to F(A \times B)$):} prende due contesti separati e li fonde in un contesto contenente una tupla.
+\begin{haskellbox}{}
+prod :: f a -> f b -> f (a, b)
+\end{haskellbox}
+\end{itemize}
+
+Anche se l'interfaccia standard di \code{Applicative} usa l'operatore \code{<*>}, quest'ultimo è concettualmente derivato dalla combinazione del tensore \code{prod} e di \code{fmap}. Se si ha una funzione nel contesto \code{f (a -> b)} e un valore \code{f a}:
+\begin{enumerate}
+    \item si usa \code{prod} per fonderli in un unico contesto: \code{f (a -> b, a)}
+    \item si usa \code{fmap} per valutare la tupla applicando la funzione all'argomento, ottenendo \code{f b}
+\end{enumerate}
+
+La natura "Lax" degli Applicativi rappresenta quindi la capacità di prendere elaborazioni racchiuse in contesti indipendenti e \textbf{fonderle in un'unica direzione di esecuzione}, permettendo la valutazione multi-argomento context-free.
