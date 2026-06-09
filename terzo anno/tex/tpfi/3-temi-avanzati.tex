@@ -2549,7 +2549,9 @@ join   :: m (m a) -> m a           -- (Moltiplicazione)
 \end{enumerate}
 
 \begin{gframe}{Approfondimento: ``una monade è solo un monoide nella categoria degli endofuntori''}
-Questa celebre citazione (attribuita a Saunders Mac Lane) riassume l'essenza matematica delle monadi. Per capirla, facciamo un parallelo tra un monoide classico e una monade:
+    (Famosa citazione attribuita a Saunders Mac Lane)  
+
+    Facciamo un parallelo tra un monoide classico e una monade:
 
 \begin{itemize}
     \item \textbf{Categoria di base:} invece di lavorare in una categoria di insiemi e valori (come \code{Int} o \code{Bool}), lavoriamo nella \textbf{categoria degli endofuntori}. Gli "oggetti" di questa categoria non sono tipi, ma i \textit{funtori stessi} (es. \code{[]}, \code{Maybe}, \code{IO}) che mappano la categoria (Hask) in se stessa.
