@@ -750,14 +750,14 @@ $$\text{date } f,g: a \to b \text{ si ha } f \apprord_{a\to b} g \iff \forall x.
 \subsubsection{Ordine e limiti}
 
 \begin{defframe}{Complete Partial Order}{}
-Se abbiamo una catena di approssimazioni $x_1 \apprord x_2 \apprord x_3 \dots$, questa tenderà ad un limite $\sqcup x = \lim_{n\to\infty} x_n$ che soddisfa le seguenti condizioni:
+Dato un insieme parzialmente ordinato (\textit{poset}, partially-ordered set) $(D, \apprord)$ formato da un dominio $D$ e una relazione d'ordine $\apprord$ su elementi di $D$ (non necessariamente tutti), definiamo una \textbf{catena} $C$ come un sottoinsieme di $D$ totalmente ordinato (in cui tutti gli elementi sono in relazione).
+
+Un poset $(D, \apprord)$ si dice un Complete Partial Order se tutte le catene hanno un supremum, ovvero un elemento "limite" $\sqcup x = \lim_{n\to\infty} x_n$ che soddisfa le seguenti condizioni:
 \begin{itemize}
     \item per ogni $n$, $x_n \apprord \sqcup x$ (il limite è un maggiorante)
     \item se per ogni $n$, $x_n \apprord y$, allora $\sqcup x \apprord y$ (il limite è il supremum, il minimo dei maggioranti (least upper bound))
 \end{itemize}
 {\color{gray}(simile al lemma di Zorn ma più forte)}
-
-Un ordinamento che soddisfa queste proprietà si definisce \textbf{Complete Partial Order}
 \end{defframe}
 
 I tipi per domini di funzioni computabili (e quindi eseguibili da una macchina) sono solitamente CPO.
@@ -803,7 +803,7 @@ f(xs) = \begin{cases}
 \end{cases}
 $
 \begin{itemize}
-    \item non è computabile perché non è continua: $\sqcup g \ x_n = \bot \neq 1 = g(\sqcup \ x_n)$
+    \item non è computabile perché non è continua: $\sqcup f \ x_n = \bot \neq 1 = f(\sqcup \ x_n)$
 \end{itemize}
 \end{itemize}
 
